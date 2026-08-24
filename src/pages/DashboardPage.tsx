@@ -3,7 +3,7 @@ import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianG
 import { PageHeader } from '../components/ui/PageHeader';
 import { KpiCard } from '../components/ui/KpiCard';
 import { useDashboardTotals, useModuleTotals } from '../lib/api/hooks';
-import { fmtMoney, fmtNumber, fmtPercent } from '../lib/format';
+import { fmtMoney, fmtNumber, fmtPercent, parseLocalDate, toLocalDateString } from '../lib/format';
 
 function startOfWeek(d: Date) {
   const day = d.getDay();
@@ -18,20 +18,22 @@ export function DashboardPage() {
   const { data: daily, isLoading: loadingDaily } = useDashboardTotals();
   const { data: moduleTotals, isLoading: loadingModules } = useModuleTotals();
 
+  // Todo en string "YYYY-MM-DD" en hora LOCAL — nunca Date directo, para no
+  // caer en el desfase de un día que da comparar contra UTC (ver parseLocalDate).
   const ranges = useMemo(() => {
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const weekStart = startOfWeek(now);
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const yearStart = new Date(now.getFullYear(), 0, 1);
+    const today = toLocalDateString(now);
+    const weekStart = toLocalDateString(startOfWeek(now));
+    const monthStart = toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
+    const yearStart = toLocalDateString(new Date(now.getFullYear(), 0, 1));
     return { today, weekStart, monthStart, yearStart };
   }, []);
 
   const totals = useMemo(() => {
     const rows = daily ?? [];
-    const sum = (from: Date) =>
+    const sum = (from: string) =>
       rows
-        .filter((r) => new Date(r.operation_date) >= from)
+        .filter((r) => r.operation_date >= from)
         .reduce(
           (acc, r) => ({
             operations: acc.operations + Number(r.operations_count),
@@ -74,7 +76,7 @@ export function DashboardPage() {
   const chartData = useMemo(() => {
     const rows = [...(daily ?? [])].reverse().slice(-30);
     return rows.map((r) => ({
-      date: new Date(r.operation_date).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }),
+      date: parseLocalDate(r.operation_date).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }),
       utilidad: Number(r.net_profit),
     }));
   }, [daily]);
