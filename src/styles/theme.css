@@ -16,16 +16,18 @@
   --ink-400: #8892ab;
   --ink-600: #5b6584;
 
-  --electric: #3d7bff;
-  --electric-bright: #5c93ff;
+  --electric: #2f74ff;
+  --electric-bright: #5c9bff;
   --electric-dim: #274a99;
-  --electric-glow: rgba(61, 123, 255, 0.35);
+  --electric-glow: rgba(47, 116, 255, 0.45);
 
-  --green: #22c58b;
-  --green-dim: #163d30;
-  --red: #ef4b5f;
+  --green: #2bff9e;
+  --green-bright: #6dffc2;
+  --green-dim: #123d2c;
+  --green-glow: rgba(43, 255, 158, 0.4);
+  --red: #ff4d6a;
   --red-dim: #3a1622;
-  --amber: #e6a23c;
+  --amber: #ffb238;
   --amber-dim: #3a2c10;
 
   --bg: var(--navy-950);
@@ -57,8 +59,8 @@ body {
   margin: 0;
   background: var(--bg);
   background-image:
-    radial-gradient(1200px 600px at 100% -10%, rgba(61, 123, 255, 0.08), transparent 60%),
-    radial-gradient(800px 500px at -10% 110%, rgba(61, 123, 255, 0.05), transparent 60%);
+    radial-gradient(1200px 600px at 100% -10%, rgba(47, 116, 255, 0.12), transparent 60%),
+    radial-gradient(800px 500px at -10% 110%, rgba(43, 255, 158, 0.06), transparent 60%);
   background-attachment: fixed;
   color: var(--text);
   font-family: var(--font-sans);
@@ -95,9 +97,12 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
   letter-spacing: -0.02em;
 }
 
-.pos { color: var(--green); }
+.pos { color: var(--green); text-shadow: 0 0 16px var(--green-glow); }
 .neg { color: var(--red); }
 .warn { color: var(--amber); }
+
+.kpi-value.pos { color: var(--green-bright); text-shadow: 0 0 20px var(--green-glow); }
+.kpi-value.neg { color: var(--red); }
 
 .btn {
   display: inline-flex;

@@ -11,7 +11,7 @@ interface NavItem {
 }
 
 const NAV: NavItem[] = [
-  { to: '/', label: 'Dashboard' },
+  { to: '/', label: 'Resumen' },
   {
     to: '/operaciones',
     label: 'Operaciones',

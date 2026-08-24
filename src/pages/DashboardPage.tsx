@@ -83,7 +83,7 @@ export function DashboardPage() {
 
   return (
     <div>
-      <PageHeader title="Dashboard" subtitle="Resumen operativo de EA Divisas" />
+      <PageHeader title="Resumen" subtitle="Resumen operativo de EA Divisas" />
 
       <SectionTitle>Hoy</SectionTitle>
       <Grid>
@@ -107,7 +107,7 @@ export function DashboardPage() {
           <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
             <defs>
               <linearGradient id="profitFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--electric)" stopOpacity={0.35} />
+                <stop offset="0%" stopColor="var(--green-bright)" stopOpacity={0.45} />
                 <stop offset="100%" stopColor="var(--electric)" stopOpacity={0} />
               </linearGradient>
             </defs>
@@ -118,7 +118,7 @@ export function DashboardPage() {
               contentStyle={{ background: 'var(--navy-850)', border: '1px solid var(--border-strong)', borderRadius: 8, fontSize: 12.5 }}
               formatter={(v) => fmtMoney(Number(v))}
             />
-            <Area type="monotone" dataKey="utilidad" stroke="var(--electric-bright)" fill="url(#profitFill)" strokeWidth={2} />
+            <Area type="monotone" dataKey="utilidad" stroke="var(--green-bright)" fill="url(#profitFill)" strokeWidth={2} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
