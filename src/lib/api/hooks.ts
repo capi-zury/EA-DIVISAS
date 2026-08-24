@@ -72,7 +72,7 @@ export function useClients() {
   return useQuery({
     queryKey: ['clients'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('clients').select('*').order('name');
+      const { data, error } = await supabase.from('clients').select('*, commissioners(name)').order('name');
       if (error) throw error;
       return data;
     },
@@ -94,12 +94,57 @@ export function useClientSummary(clientId: string | null) {
 export function useCreateClient() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { name: string; phone?: string; email?: string; country?: string; internal_reference?: string; notes?: string }) => {
+    mutationFn: async (input: {
+      name: string;
+      phone?: string;
+      email?: string;
+      country?: string;
+      internal_reference?: string;
+      notes?: string;
+      commissioner_id?: string | null;
+      primary_module?: string | null;
+    }) => {
       const { data, error } = await supabase.from('clients').insert(input).select().single();
       if (error) throw error;
       return data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['clients'] }),
+  });
+}
+
+// ---------- Comisionistas ----------
+
+export function useCommissioners() {
+  return useQuery({
+    queryKey: ['commissioners'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('commissioners').select('*').eq('active', true).order('name');
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useCreateCommissioner() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { name: string; phone?: string; email?: string; notes?: string }) => {
+      const { data, error } = await supabase.from('commissioners').insert(input).select().single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['commissioners'] }),
+  });
+}
+
+export function useCommissionerSummary() {
+  return useQuery({
+    queryKey: ['commissioner_summary'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('commissioner_summary').select('*').order('total_profit', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
   });
 }
 
