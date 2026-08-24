@@ -158,13 +158,14 @@ export const handler = async (event: { httpMethod: string; body: string | null; 
       commissionFixed: d.commissionFixed,
       commissionPercent: d.commissionPercent,
       additionalCosts: d.additionalCosts,
+      providerCommissionPercent: d.providerCommissionPercent,
     });
 
     const { data, error } = await admin.rpc('create_cash_operation', {
       p_header: {
         ...header,
         gross_revenue: toDisplayNumber(calc.revenue),
-        total_costs: toDisplayNumber(calc.cost) + toDisplayNumber(d.additionalCosts ?? 0),
+        total_costs: toDisplayNumber(calc.cost) + toDisplayNumber(d.additionalCosts ?? 0) + toDisplayNumber(calc.providerCommissionAmount),
         gross_profit: toDisplayNumber(calc.grossProfit),
         net_profit: toDisplayNumber(calc.netProfit),
         margin_percent: toDisplayNumber(calc.marginPercent),
@@ -181,6 +182,9 @@ export const handler = async (event: { httpMethod: string; body: string | null; 
         commission_amount: toDisplayNumber(calc.commissionAmount),
         spread_per_unit: toDisplayNumber(calc.spreadPerUnit),
         spread_total: toDisplayNumber(calc.spreadTotal),
+        provider_id: d.providerId ?? null,
+        provider_commission_percent: toDisplayNumber(d.providerCommissionPercent ?? 0),
+        provider_commission_amount: toDisplayNumber(calc.providerCommissionAmount),
       },
     });
     if (error) throw error;

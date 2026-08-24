@@ -72,6 +72,8 @@ export const cashInputSchema = z.object({
   commissionFixed: money.optional(),
   commissionPercent: money.optional(),
   additionalCosts: money.optional(),
+  providerId: optionalUuid,
+  providerCommissionPercent: money.optional(),
 });
 
 export const createOperationRequestSchema = z.discriminatedUnion('module', [

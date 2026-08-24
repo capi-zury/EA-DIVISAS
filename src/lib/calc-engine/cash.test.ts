@@ -28,4 +28,20 @@ describe('calcCash', () => {
       6
     );
   });
+
+  it('modo simple (monto + %): 1% de 1,000,000 = 10,000 de comisión, todo para EA Divisas si no hay proveedor', () => {
+    const r = calcCash({ quantity: 1_000_000, buyPrice: 1, sellPrice: 1, commissionPercent: 1 });
+    expect(toDisplayNumber(r.commissionAmount)).toBe(10000);
+    expect(toDisplayNumber(r.providerCommissionAmount)).toBe(0);
+    expect(toDisplayNumber(r.ourCommissionAmount)).toBe(10000);
+    expect(toDisplayNumber(r.netProfit)).toBe(10000);
+  });
+
+  it('reparto con proveedor: si el proveedor se lleva 40% de la comisión, a nosotros nos queda 60%', () => {
+    const r = calcCash({ quantity: 1_000_000, buyPrice: 1, sellPrice: 1, commissionPercent: 1, providerCommissionPercent: 40 });
+    expect(toDisplayNumber(r.commissionAmount)).toBe(10000);
+    expect(toDisplayNumber(r.providerCommissionAmount)).toBe(4000);
+    expect(toDisplayNumber(r.ourCommissionAmount)).toBe(6000);
+    expect(toDisplayNumber(r.netProfit)).toBe(6000);
+  });
 });
