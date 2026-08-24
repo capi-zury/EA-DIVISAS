@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Secretos — nunca en git. Ver .env.example para las variables requeridas.
+.env
+.env.*
+!.env.example
+.netlify
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
