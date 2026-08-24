@@ -8,6 +8,16 @@ export function fmtNumber(value: number | string | null | undefined, decimals = 
   return n.toLocaleString('es-MX', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
+/** Compacto para ejes de gráfica: $12.3K, $1.2M, -$500. */
+export function fmtMoneyCompact(value: number | string | null | undefined) {
+  const n = Number(value ?? 0);
+  const sign = n < 0 ? '-' : '';
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toLocaleString('es-MX', { maximumFractionDigits: 1 })}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toLocaleString('es-MX', { maximumFractionDigits: 1 })}K`;
+  return `${sign}$${abs.toLocaleString('es-MX', { maximumFractionDigits: 0 })}`;
+}
+
 export function fmtPercent(value: number | string | null | undefined) {
   const n = Number(value ?? 0);
   return `${n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;

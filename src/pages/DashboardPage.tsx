@@ -1,9 +1,15 @@
-import { useMemo, type ReactNode } from 'react';
-import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { useMemo, useState, type ReactNode } from 'react';
+import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from 'recharts';
 import { PageHeader } from '../components/ui/PageHeader';
 import { KpiCard } from '../components/ui/KpiCard';
 import { useDashboardTotals, useModuleTotals } from '../lib/api/hooks';
-import { fmtMoney, fmtNumber, fmtPercent, parseLocalDate, toLocalDateString } from '../lib/format';
+import { fmtMoney, fmtMoneyCompact, fmtNumber, fmtPercent, parseLocalDate, toLocalDateString } from '../lib/format';
+
+const PERIODS = [
+  { days: 7, label: '7 días' },
+  { days: 30, label: '30 días' },
+  { days: 90, label: '90 días' },
+] as const;
 
 function startOfWeek(d: Date) {
   const day = d.getDay();
@@ -73,13 +79,22 @@ export function DashboardPage() {
     return { transferencia: build('transferencia'), cripto: build('cripto'), efectivo: build('efectivo') };
   }, [moduleTotals]);
 
+  const [periodDays, setPeriodDays] = useState<number>(30);
+
   const chartData = useMemo(() => {
-    const rows = [...(daily ?? [])].reverse().slice(-30);
+    const rows = [...(daily ?? [])].reverse().slice(-periodDays);
     return rows.map((r) => ({
       date: parseLocalDate(r.operation_date).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }),
+      fullDate: parseLocalDate(r.operation_date).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }),
       utilidad: Number(r.net_profit),
     }));
-  }, [daily]);
+  }, [daily, periodDays]);
+
+  const chartStats = useMemo(() => {
+    if (chartData.length === 0) return { total: 0, avg: 0 };
+    const total = chartData.reduce((s, r) => s + r.utilidad, 0);
+    return { total, avg: total / chartData.length };
+  }, [chartData]);
 
   const loading = loadingDaily || loadingModules;
 
@@ -103,26 +118,81 @@ export function DashboardPage() {
         <KpiCard label="Del año" value={fmtMoney(totals.year.profit)} tone={totals.year.profit >= 0 ? 'pos' : 'neg'} />
       </Grid>
 
-      <div className="card" style={{ marginBottom: 28, height: 240 }}>
-        <div style={{ fontSize: 12.5, color: 'var(--text-dim)', marginBottom: 12 }}>Utilidad por día (últimos 30 días)</div>
-        <ResponsiveContainer width="100%" height="88%">
-          <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-            <defs>
-              <linearGradient id="profitFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--green-bright)" stopOpacity={0.45} />
-                <stop offset="100%" stopColor="var(--electric)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="date" stroke="var(--text-mute)" fontSize={11} tickLine={false} axisLine={false} />
-            <YAxis stroke="var(--text-mute)" fontSize={11} tickLine={false} axisLine={false} width={70} tickFormatter={(v) => fmtMoney(v)} />
-            <Tooltip
-              contentStyle={{ background: 'var(--navy-850)', border: '1px solid var(--border-strong)', borderRadius: 8, fontSize: 12.5 }}
-              formatter={(v) => fmtMoney(Number(v))}
-            />
-            <Area type="monotone" dataKey="utilidad" stroke="var(--green-bright)" fill="url(#profitFill)" strokeWidth={2} />
-          </AreaChart>
-        </ResponsiveContainer>
+      <div className="card" style={{ marginBottom: 28 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 12.5, color: 'var(--text-dim)', marginBottom: 6 }}>Utilidad por día</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+              <span className="kpi-value" style={{ fontSize: 26 }}>
+                {fmtMoney(chartStats.total)}
+              </span>
+              <span style={{ fontSize: 12, color: 'var(--text-mute)' }}>en {periodDays} días · {fmtMoney(chartStats.avg)} promedio/día</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 4, background: 'var(--navy-850)', border: '1px solid var(--border)', borderRadius: 8, padding: 3 }}>
+            {PERIODS.map((p) => (
+              <button
+                key={p.days}
+                onClick={() => setPeriodDays(p.days)}
+                style={{
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '5px 12px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  color: periodDays === p.days ? '#fff' : 'var(--text-dim)',
+                  background: periodDays === p.days ? 'var(--electric)' : 'transparent',
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ height: 260 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+              <defs>
+                <linearGradient id="profitFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--green-bright)" stopOpacity={0.32} />
+                  <stop offset="100%" stopColor="var(--green-bright)" stopOpacity={0} />
+                </linearGradient>
+                <filter id="lineGlow" x="-40%" y="-40%" width="180%" height="180%">
+                  <feGaussianBlur stdDeviation="3.2" result="blur" />
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              </defs>
+              <CartesianGrid stroke="var(--border)" vertical={false} />
+              <ReferenceLine y={0} stroke="var(--border-strong)" strokeWidth={1} />
+              <XAxis
+                dataKey="date"
+                stroke="var(--text-mute)"
+                fontSize={11}
+                tickLine={false}
+                axisLine={false}
+                interval={periodDays > 30 ? Math.ceil(periodDays / 12) : 'preserveStartEnd'}
+                minTickGap={24}
+              />
+              <YAxis stroke="var(--text-mute)" fontSize={11} tickLine={false} axisLine={false} width={56} tickFormatter={(v) => fmtMoneyCompact(v)} />
+              <Tooltip cursor={{ stroke: 'var(--border-strong)', strokeWidth: 1, strokeDasharray: '3 3' }} content={<ChartTooltip />} />
+              <Area
+                type="monotone"
+                dataKey="utilidad"
+                stroke="var(--green-bright)"
+                fill="url(#profitFill)"
+                strokeWidth={2}
+                style={{ filter: 'url(#lineGlow)' }}
+                activeDot={{ r: 5, fill: 'var(--green-bright)', stroke: 'var(--navy-900)', strokeWidth: 2 }}
+                dot={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       <SectionTitle>Por módulo</SectionTitle>
@@ -176,6 +246,36 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: 'pos
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)', fontSize: 13.5 }}>
       <span style={{ color: 'var(--text-dim)' }}>{label}</span>
       <span className={`mono ${tone === 'pos' ? 'pos' : tone === 'neg' ? 'neg' : ''}`}>{value}</span>
+    </div>
+  );
+}
+
+interface ChartTooltipPayload {
+  payload: { fullDate: string; utilidad: number };
+}
+
+function ChartTooltip({ active, payload }: { active?: boolean; payload?: ChartTooltipPayload[] }) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0].payload;
+  const positive = point.utilidad >= 0;
+  return (
+    <div
+      style={{
+        background: 'var(--navy-850)',
+        border: '1px solid var(--border-strong)',
+        borderRadius: 8,
+        padding: '10px 12px',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+        textTransform: 'capitalize',
+      }}
+    >
+      <div style={{ fontSize: 11, color: 'var(--text-mute)', marginBottom: 6 }}>{point.fullDate}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+        <span style={{ width: 10, height: 2, background: positive ? 'var(--green-bright)' : 'var(--red)', display: 'inline-block', borderRadius: 1 }} />
+        <span className={`mono ${positive ? 'pos' : 'neg'}`} style={{ fontSize: 15, fontWeight: 700 }}>
+          {fmtMoney(point.utilidad)}
+        </span>
+      </div>
     </div>
   );
 }
