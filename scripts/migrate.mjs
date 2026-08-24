@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 /**
  * Aplica, en orden, todos los archivos .sql de supabase/migrations/ contra
- * la base indicada en DATABASE_URL (.env, nunca en git). Lleva un registro
- * de qué migraciones ya corrieron en divisas._migrations para no
- * reaplicarlas. supabase/seed/ NUNCA se toca desde aquí a propósito.
+ * el proyecto de Supabase, vía la Management API (no necesita connection
+ * string de Postgres, solo un Personal Access Token — dashboard → Account →
+ * Access Tokens). Lleva un registro de qué migraciones ya corrieron en
+ * divisas._migrations para no reaplicarlas. supabase/seed/ NUNCA se toca
+ * desde aquí a propósito.
  *
  * Uso: node scripts/migrate.mjs
  */
@@ -11,31 +13,46 @@ import 'dotenv/config';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import pg from 'pg';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDir = path.join(__dirname, '..', 'supabase', 'migrations');
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) {
-  console.error('Falta DATABASE_URL en .env (connection string de Postgres de Supabase, Settings → Database → URI).');
+const projectRef = process.env.SUPABASE_PROJECT_REF;
+const accessToken = process.env.SUPABASE_ACCESS_TOKEN;
+if (!projectRef || !accessToken) {
+  console.error('Faltan SUPABASE_PROJECT_REF / SUPABASE_ACCESS_TOKEN en .env');
   process.exit(1);
 }
 
-const client = new pg.Client({ connectionString, ssl: { rejectUnauthorized: false } });
+const apiUrl = `https://api.supabase.com/v1/projects/${projectRef}/database/query`;
+
+async function runSql(query) {
+  const res = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ query }),
+  });
+  const body = await res.json();
+  if (!res.ok) {
+    const message = body?.message || body?.error || JSON.stringify(body);
+    throw new Error(message);
+  }
+  return body;
+}
 
 async function main() {
-  await client.connect();
-
-  await client.query('create schema if not exists divisas;');
-  await client.query(`
+  await runSql('create schema if not exists divisas;');
+  await runSql(`
     create table if not exists divisas._migrations (
       filename text primary key,
       applied_at timestamptz not null default now()
     );
   `);
 
-  const { rows: appliedRows } = await client.query('select filename from divisas._migrations;');
+  const appliedRows = await runSql('select filename from divisas._migrations;');
   const applied = new Set(appliedRows.map((r) => r.filename));
 
   const files = readdirSync(migrationsDir)
@@ -43,6 +60,7 @@ async function main() {
     .sort();
 
   let ranAny = false;
+  let failed = false;
   for (const file of files) {
     if (applied.has(file)) {
       console.log(`  = ${file} (ya aplicada)`);
@@ -52,21 +70,17 @@ async function main() {
     const sql = readFileSync(path.join(migrationsDir, file), 'utf8');
     console.log(`  → aplicando ${file} ...`);
     try {
-      await client.query('begin;');
-      await client.query(sql);
-      await client.query('insert into divisas._migrations (filename) values ($1);', [file]);
-      await client.query('commit;');
+      await runSql(`begin; ${sql}\n insert into divisas._migrations (filename) values ('${file}'); commit;`);
       console.log(`  ✓ ${file}`);
     } catch (err) {
-      await client.query('rollback;');
       console.error(`  ✗ ${file} falló:\n`, err.message);
-      process.exitCode = 1;
+      failed = true;
       break;
     }
   }
 
-  if (!ranAny) console.log('Nada nuevo que aplicar — base al día.');
-  await client.end();
+  if (!ranAny && !failed) console.log('Nada nuevo que aplicar — base al día.');
+  if (failed) process.exitCode = 1;
 }
 
 main().catch((err) => {
