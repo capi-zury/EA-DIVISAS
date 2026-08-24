@@ -1,6 +1,7 @@
 import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Modal } from '../../components/ui/Modal';
+import { Hint } from '../../components/ui/Hint';
 import { useClients, useCreateOperation, useCurrencies, useOperations, useUpdateOperationStatus } from '../../lib/api/hooks';
 import { fmtDateTime, fmtMoney, fmtNumber } from '../../lib/format';
 import { calcCash, toDisplayNumber } from '../../lib/calc-engine';
@@ -196,50 +197,51 @@ function CashForm({ onDone }: { onDone: () => void }) {
         </div>
 
         <div className="field">
-          <label>Cantidad</label>
-          <input required type="number" step="any" value={form.quantity} onChange={set('quantity')} />
+          <label>¿Cuánto?</label>
+          <input required type="number" step="any" placeholder="ej. 500" value={form.quantity} onChange={set('quantity')} />
+          <Hint>Cuántos dólares (o de la moneda que sea) se compraron o vendieron.</Hint>
         </div>
         <div className="field">
-          <label>Denominación</label>
-          <input value={form.denomination} onChange={set('denomination')} placeholder="opcional" />
+          <label>Denominación (opcional)</label>
+          <input value={form.denomination} onChange={set('denomination')} placeholder='ej. "billetes de 100"' />
         </div>
 
         <div className="field">
-          <label>Precio de compra</label>
+          <label>¿A cuánto lo compraste?</label>
           <input required type="number" step="any" value={form.buyPrice} onChange={set('buyPrice')} />
         </div>
         <div className="field">
-          <label>Precio de venta</label>
+          <label>¿A cuánto lo vendiste?</label>
           <input required type="number" step="any" value={form.sellPrice} onChange={set('sellPrice')} />
         </div>
 
         <div className="field">
-          <label>Comisión fija</label>
-          <input type="number" step="any" value={form.commissionFixed} onChange={set('commissionFixed')} />
+          <label>Comisión fija (opcional)</label>
+          <input type="number" step="any" placeholder="0" value={form.commissionFixed} onChange={set('commissionFixed')} />
         </div>
         <div className="field">
-          <label>Comisión %</label>
-          <input type="number" step="any" value={form.commissionPercent} onChange={set('commissionPercent')} />
+          <label>Comisión % (opcional)</label>
+          <input type="number" step="any" placeholder="0" value={form.commissionPercent} onChange={set('commissionPercent')} />
         </div>
 
         <div className="field">
-          <label>Costos adicionales</label>
-          <input type="number" step="any" value={form.additionalCosts} onChange={set('additionalCosts')} />
+          <label>Otros costos (opcional)</label>
+          <input type="number" step="any" placeholder="0" value={form.additionalCosts} onChange={set('additionalCosts')} />
         </div>
         <div className="field">
-          <label>Referencia</label>
-          <input value={form.reference} onChange={set('reference')} />
+          <label>Referencia (opcional)</label>
+          <input value={form.reference} onChange={set('reference')} placeholder="folio interno, número de orden, etc." />
         </div>
       </div>
 
       {preview && (
         <div className="card card-tight" style={{ background: 'var(--navy-850)', marginBottom: 16 }}>
           <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Cálculo automático
+            Esto es lo que va a ganar la empresa (se calcula solo)
           </div>
-          <PreviewRow label="Spread por unidad" value={fmtMoney(toDisplayNumber(preview.spreadPerUnit))} />
-          <PreviewRow label="Spread total" value={fmtMoney(toDisplayNumber(preview.spreadTotal))} />
-          <PreviewRow label="Utilidad neta" value={fmtMoney(toDisplayNumber(preview.netProfit))} tone={toDisplayNumber(preview.netProfit) >= 0 ? 'pos' : 'neg'} bold />
+          <PreviewRow label="Diferencia por unidad" value={fmtMoney(toDisplayNumber(preview.spreadPerUnit))} />
+          <PreviewRow label="Diferencia total" value={fmtMoney(toDisplayNumber(preview.spreadTotal))} />
+          <PreviewRow label="Ganancia neta" value={fmtMoney(toDisplayNumber(preview.netProfit))} tone={toDisplayNumber(preview.netProfit) >= 0 ? 'pos' : 'neg'} bold />
         </div>
       )}
 

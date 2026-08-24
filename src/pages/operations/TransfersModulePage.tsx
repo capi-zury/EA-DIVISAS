@@ -1,6 +1,7 @@
 import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Modal } from '../../components/ui/Modal';
+import { Hint } from '../../components/ui/Hint';
 import { useClients, useCreateOperation, useCurrencies, useOperations, useProviders, useUpdateOperationStatus } from '../../lib/api/hooks';
 import { fmtDateTime, fmtMoney } from '../../lib/format';
 import { calcTransfer, toDisplayNumber } from '../../lib/calc-engine';
@@ -237,11 +238,11 @@ function TransferForm({ onDone }: { onDone: () => void }) {
         </div>
 
         <div className="field">
-          <label>Monto enviado</label>
-          <input required type="number" step="any" value={form.amountSent} onChange={set('amountSent')} />
+          <label>¿Cuánto envió el cliente?</label>
+          <input required type="number" step="any" placeholder="en la moneda de origen" value={form.amountSent} onChange={set('amountSent')} />
         </div>
         <div className="field">
-          <label>Proveedor</label>
+          <label>¿Con qué proveedor? (opcional)</label>
           <select value={form.providerId} onChange={set('providerId')}>
             <option value="">— sin asignar —</option>
             {providers?.map((p: any) => (
@@ -253,51 +254,55 @@ function TransferForm({ onDone }: { onDone: () => void }) {
         </div>
 
         <div className="field">
-          <label>Tipo de cambio de compra (costo real)</label>
+          <label>¿A cómo te costó el dólar (o la moneda)?</label>
           <input required type="number" step="any" value={form.buyRate} onChange={set('buyRate')} />
+          <Hint>El tipo de cambio real que te costó a ti conseguir el dinero.</Hint>
         </div>
         <div className="field">
-          <label>Tipo de cambio de venta (aplicado al cliente)</label>
+          <label>¿A cómo se lo cobraste al cliente?</label>
           <input required type="number" step="any" value={form.sellRate} onChange={set('sellRate')} />
+          <Hint>El tipo de cambio que usaste para calcular cuánto recibe el cliente.</Hint>
         </div>
 
         <div className="field">
-          <label>Comisión fija</label>
-          <input type="number" step="any" value={form.commissionFixed} onChange={set('commissionFixed')} />
+          <label>Comisión fija que cobraste (opcional)</label>
+          <input type="number" step="any" placeholder="0" value={form.commissionFixed} onChange={set('commissionFixed')} />
+          <Hint>Un cobro fijo en pesos, aparte del tipo de cambio.</Hint>
         </div>
         <div className="field">
-          <label>Comisión % (sobre monto recibido)</label>
-          <input type="number" step="any" value={form.commissionPercent} onChange={set('commissionPercent')} />
-        </div>
-
-        <div className="field">
-          <label>Costo proveedor</label>
-          <input type="number" step="any" value={form.providerCost} onChange={set('providerCost')} />
-        </div>
-        <div className="field">
-          <label>Costo bancario</label>
-          <input type="number" step="any" value={form.bankCost} onChange={set('bankCost')} />
+          <label>Comisión en % que cobraste (opcional)</label>
+          <input type="number" step="any" placeholder="0" value={form.commissionPercent} onChange={set('commissionPercent')} />
+          <Hint>Un porcentaje sobre el monto que recibe el cliente.</Hint>
         </div>
 
         <div className="field">
-          <label>Costo adicional</label>
-          <input type="number" step="any" value={form.additionalCost} onChange={set('additionalCost')} />
+          <label>Costo del proveedor (opcional)</label>
+          <input type="number" step="any" placeholder="0" value={form.providerCost} onChange={set('providerCost')} />
         </div>
         <div className="field">
-          <label>Referencia</label>
-          <input value={form.reference} onChange={set('reference')} />
+          <label>Costo del banco (opcional)</label>
+          <input type="number" step="any" placeholder="0" value={form.bankCost} onChange={set('bankCost')} />
+        </div>
+
+        <div className="field">
+          <label>Otro costo (opcional)</label>
+          <input type="number" step="any" placeholder="0" value={form.additionalCost} onChange={set('additionalCost')} />
+        </div>
+        <div className="field">
+          <label>Referencia (opcional)</label>
+          <input value={form.reference} onChange={set('reference')} placeholder="folio interno, número de orden, etc." />
         </div>
       </div>
 
       {preview && (
         <div className="card card-tight" style={{ background: 'var(--navy-850)', marginBottom: 16 }}>
           <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Cálculo automático
+            Esto es lo que va a ganar la empresa (se calcula solo)
           </div>
-          <PreviewRow label="Monto recibido" value={fmtMoney(toDisplayNumber(preview.amountReceived))} />
-          <PreviewRow label="Spread cambiario" value={fmtMoney(toDisplayNumber(preview.spreadRevenue))} />
-          <PreviewRow label="Comisión cobrada" value={fmtMoney(toDisplayNumber(preview.commissionAmount))} />
-          <PreviewRow label="Utilidad neta" value={fmtMoney(toDisplayNumber(preview.netProfit))} tone={toDisplayNumber(preview.netProfit) >= 0 ? 'pos' : 'neg'} bold />
+          <PreviewRow label="Lo que recibe el cliente" value={fmtMoney(toDisplayNumber(preview.amountReceived))} />
+          <PreviewRow label="Diferencia entre tipos de cambio" value={fmtMoney(toDisplayNumber(preview.spreadRevenue))} />
+          <PreviewRow label="Comisión que cobraste" value={fmtMoney(toDisplayNumber(preview.commissionAmount))} />
+          <PreviewRow label="Ganancia neta" value={fmtMoney(toDisplayNumber(preview.netProfit))} tone={toDisplayNumber(preview.netProfit) >= 0 ? 'pos' : 'neg'} bold />
         </div>
       )}
 

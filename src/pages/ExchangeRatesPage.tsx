@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
 import { PageHeader } from '../components/ui/PageHeader';
+import { Hint } from '../components/ui/Hint';
 import { useAuth } from '../lib/auth/AuthContext';
 import { useExchangeRateHistory, useExchangeRates, useUpsertExchangeRate } from '../lib/api/hooks';
 import { fmtDateTime, fmtNumber } from '../lib/format';
@@ -67,22 +68,23 @@ export function ExchangeRatesPage() {
             <h3 style={{ fontSize: 14.5, marginBottom: 14 }}>Actualizar / crear</h3>
             <form onSubmit={handleSubmit}>
               <div className="field">
-                <label>Par (ej. USD/MXN)</label>
+                <label>¿Qué monedas? (ej. USD/MXN)</label>
                 <input required value={form.pair} onChange={set('pair')} placeholder="USD/MXN" />
+                <Hint>Se escribe así: moneda que compras / moneda con la que pagas.</Hint>
               </div>
               <div className="field">
                 <label>Tipo</label>
                 <select value={form.kind} onChange={set('kind')}>
-                  <option value="fiat">Fiat</option>
-                  <option value="cripto">Cripto</option>
+                  <option value="fiat">Dinero normal (dólares, euros...)</option>
+                  <option value="cripto">Criptomoneda</option>
                 </select>
               </div>
               <div className="field">
-                <label>Compra</label>
+                <label>Precio al que compras</label>
                 <input required type="number" step="any" value={form.buy_rate} onChange={set('buy_rate')} />
               </div>
               <div className="field">
-                <label>Venta</label>
+                <label>Precio al que vendes</label>
                 <input required type="number" step="any" value={form.sell_rate} onChange={set('sell_rate')} />
               </div>
               <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} disabled={isPending}>

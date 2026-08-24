@@ -1,6 +1,7 @@
 import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Modal } from '../../components/ui/Modal';
+import { Hint } from '../../components/ui/Hint';
 import { useClients, useCreateOperation, useCryptoAssets, useCryptoNetworks, useOperations, useProviders, useUpdateOperationStatus } from '../../lib/api/hooks';
 import { fmtDateTime, fmtMoney, fmtNumber, fmtPercent } from '../../lib/format';
 import { calcCrypto, toDisplayNumber } from '../../lib/calc-engine';
@@ -205,7 +206,7 @@ function CryptoForm({ onDone }: { onDone: () => void }) {
           </select>
         </div>
         <div className="field">
-          <label>Proveedor / exchange</label>
+          <label>¿Con qué plataforma operaste? (opcional)</label>
           <select value={form.providerId} onChange={set('providerId')}>
             <option value="">— sin asignar —</option>
             {providers?.map((p: any) => (
@@ -214,10 +215,11 @@ function CryptoForm({ onDone }: { onDone: () => void }) {
               </option>
             ))}
           </select>
+          <Hint>El exchange donde compraste o vendiste (Bitso, Binance, etc.).</Hint>
         </div>
 
         <div className="field">
-          <label>Activo</label>
+          <label>¿Qué cripto es?</label>
           <select
             required
             value={assetCode}
@@ -235,7 +237,7 @@ function CryptoForm({ onDone }: { onDone: () => void }) {
           </select>
         </div>
         <div className="field">
-          <label>Red / blockchain</label>
+          <label>¿En qué red se movió?</label>
           <select required value={form.networkId} onChange={set('networkId')} disabled={!assetCode}>
             <option value="">Selecciona…</option>
             {networks?.map((n: any) => (
@@ -244,57 +246,66 @@ function CryptoForm({ onDone }: { onDone: () => void }) {
               </option>
             ))}
           </select>
+          <Hint>Importante: el mismo USDT puede moverse por varias redes distintas (Ethereum, Tron, etc.) — hay que elegir la correcta.</Hint>
         </div>
 
         <div className="field">
-          <label>Cantidad</label>
-          <input required type="number" step="any" value={form.quantity} onChange={set('quantity')} />
+          <label>¿Cuánta cripto?</label>
+          <input required type="number" step="any" placeholder="ej. 10000" value={form.quantity} onChange={set('quantity')} />
+          <Hint>La cantidad de la cripto que se compró o vendió (no el dinero en pesos).</Hint>
         </div>
         <div className="field">
-          <label>Precio de mercado (referencia)</label>
-          <input type="number" step="any" placeholder="= precio de compra si se deja vacío" value={form.marketPrice} onChange={set('marketPrice')} />
+          <label>Precio de referencia (opcional)</label>
+          <input type="number" step="any" placeholder="se usa el precio de compra si lo dejas vacío" value={form.marketPrice} onChange={set('marketPrice')} />
+          <Hint>El precio "real" de mercado en ese momento, solo para comparar. Si no lo sabes, déjalo vacío.</Hint>
         </div>
         <div className="field">
-          <label>Precio de compra (costo real EA)</label>
-          <input required type="number" step="any" value={form.buyPrice} onChange={set('buyPrice')} />
+          <label>¿A cuánto la compraste?</label>
+          <input required type="number" step="any" placeholder="precio por unidad, en pesos" value={form.buyPrice} onChange={set('buyPrice')} />
+          <Hint>Lo que a ti (EA Divisas) te costó cada unidad.</Hint>
         </div>
         <div className="field">
-          <label>Precio de venta (cobrado al cliente)</label>
-          <input required type="number" step="any" value={form.sellPrice} onChange={set('sellPrice')} />
-        </div>
-
-        <div className="field">
-          <label>Comisión exchange — compra</label>
-          <input type="number" step="any" value={form.providerFeeBuy} onChange={set('providerFeeBuy')} />
-        </div>
-        <div className="field">
-          <label>Comisión exchange — venta</label>
-          <input type="number" step="any" value={form.providerFeeSell} onChange={set('providerFeeSell')} />
-        </div>
-        <div className="field">
-          <label>Comisión de red (gas)</label>
-          <input type="number" step="any" value={form.networkFee} onChange={set('networkFee')} />
-        </div>
-        <div className="field">
-          <label>Comisión cliente — fija</label>
-          <input type="number" step="any" value={form.customerFeeFixed} onChange={set('customerFeeFixed')} />
+          <label>¿A cuánto se la vendiste al cliente?</label>
+          <input required type="number" step="any" placeholder="precio por unidad, en pesos" value={form.sellPrice} onChange={set('sellPrice')} />
+          <Hint>Lo que le cobraste al cliente por cada unidad.</Hint>
         </div>
 
         <div className="field">
-          <label>TX Hash</label>
-          <input value={form.txHash} onChange={set('txHash')} placeholder="opcional" />
+          <label>Comisión del exchange al comprar (opcional)</label>
+          <input type="number" step="any" placeholder="0" value={form.providerFeeBuy} onChange={set('providerFeeBuy')} />
+          <Hint>Lo que te cobró la plataforma (Bitso, Binance, etc.) por comprar.</Hint>
         </div>
         <div className="field">
-          <label>Referencia</label>
-          <input value={form.reference} onChange={set('reference')} />
+          <label>Comisión del exchange al vender (opcional)</label>
+          <input type="number" step="any" placeholder="0" value={form.providerFeeSell} onChange={set('providerFeeSell')} />
+          <Hint>Lo que te cobró la plataforma por vender.</Hint>
         </div>
         <div className="field">
-          <label>Wallet origen</label>
-          <input value={form.walletOrigin} onChange={set('walletOrigin')} placeholder="opcional" />
+          <label>Costo de mover la cripto — "gas" (opcional)</label>
+          <input type="number" step="any" placeholder="0" value={form.networkFee} onChange={set('networkFee')} />
+          <Hint>Lo que cobra la red (blockchain) por mandar la transacción.</Hint>
         </div>
         <div className="field">
-          <label>Wallet destino</label>
-          <input value={form.walletDestination} onChange={set('walletDestination')} placeholder="opcional" />
+          <label>Comisión extra que le cobraste al cliente (opcional)</label>
+          <input type="number" step="any" placeholder="0" value={form.customerFeeFixed} onChange={set('customerFeeFixed')} />
+          <Hint>Un cobro aparte del precio, si aplicaste alguno.</Hint>
+        </div>
+
+        <div className="field">
+          <label>TX Hash (opcional)</label>
+          <input value={form.txHash} onChange={set('txHash')} placeholder="el identificador de la transacción en la blockchain" />
+        </div>
+        <div className="field">
+          <label>Referencia (opcional)</label>
+          <input value={form.reference} onChange={set('reference')} placeholder="folio interno, número de orden, etc." />
+        </div>
+        <div className="field">
+          <label>Wallet de donde salió (opcional)</label>
+          <input value={form.walletOrigin} onChange={set('walletOrigin')} placeholder="dirección de la wallet" />
+        </div>
+        <div className="field">
+          <label>Wallet a donde llegó (opcional)</label>
+          <input value={form.walletDestination} onChange={set('walletDestination')} placeholder="dirección de la wallet" />
         </div>
       </div>
 
@@ -306,12 +317,12 @@ function CryptoForm({ onDone }: { onDone: () => void }) {
       {preview && (
         <div className="card card-tight" style={{ background: 'var(--navy-850)', marginBottom: 16 }}>
           <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Cálculo automático
+            Esto es lo que va a ganar la empresa (se calcula solo)
           </div>
-          <PreviewRow label="Costo de adquisición" value={fmtMoney(toDisplayNumber(preview.acquisitionCost))} />
-          <PreviewRow label="Ingreso total" value={fmtMoney(toDisplayNumber(preview.totalRevenue))} />
-          <PreviewRow label="Spread total" value={fmtMoney(toDisplayNumber(preview.totalSpread))} />
-          <PreviewRow label="Utilidad neta" value={fmtMoney(toDisplayNumber(preview.netProfit))} tone={toDisplayNumber(preview.netProfit) >= 0 ? 'pos' : 'neg'} bold />
+          <PreviewRow label="Lo que te costó en total" value={fmtMoney(toDisplayNumber(preview.acquisitionCost))} />
+          <PreviewRow label="Lo que cobraste en total" value={fmtMoney(toDisplayNumber(preview.totalRevenue))} />
+          <PreviewRow label="Diferencia entre precios (spread)" value={fmtMoney(toDisplayNumber(preview.totalSpread))} />
+          <PreviewRow label="Ganancia neta" value={fmtMoney(toDisplayNumber(preview.netProfit))} tone={toDisplayNumber(preview.netProfit) >= 0 ? 'pos' : 'neg'} bold />
           <PreviewRow label="Margen" value={fmtPercent(toDisplayNumber(preview.marginPercent))} />
         </div>
       )}
