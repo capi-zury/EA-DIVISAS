@@ -29,7 +29,7 @@ export function ClientsPage() {
         }
       />
 
-      <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 340px' : '1fr', gap: 20 }}>
+      <div className={selected ? 'sidebar-layout' : undefined} style={selected ? undefined : { display: 'grid', gap: 20 }}>
         <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
           <table>
             <thead>
@@ -138,7 +138,7 @@ function ClientForm({ onDone }: { onDone: () => void }) {
         <label>Nombre</label>
         <input required value={form.name} onChange={set('name')} />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+      <div className="grid-2">
         <div className="field">
           <label>Teléfono</label>
           <input value={form.phone} onChange={set('phone')} />

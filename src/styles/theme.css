@@ -30,6 +30,15 @@
   --amber: #ffb238;
   --amber-dim: #3a2c10;
 
+  /* Paleta categórica para gráficas de varias series (ingresos/costos/utilidad
+     juntos) — pasada por scripts/validate_palette.js del skill de dataviz,
+     banda de luminosidad OKLCH 0.48–0.67 en modo oscuro. Los tonos "bright"
+     de arriba son para acentos de una sola serie (KPIs, glow) — para varias
+     series a la vez usa siempre estos tres, nunca los --*-bright. */
+  --chart-revenue: #3d7bff;
+  --chart-cost: #cc7a1a;
+  --chart-profit: #0fa868;
+
   --bg: var(--navy-950);
   --surface: var(--navy-900);
   --surface-raised: var(--navy-850);
@@ -57,6 +66,7 @@ html, body, #root {
 
 body {
   margin: 0;
+  overflow-x: hidden;
   background: var(--bg);
   background-image:
     radial-gradient(1200px 600px at 100% -10%, rgba(47, 116, 255, 0.12), transparent 60%),
@@ -212,4 +222,65 @@ td.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text
   text-transform: uppercase;
   border: 1px solid var(--border-strong);
   color: var(--text-dim);
+}
+
+/* ---------- Responsive: grids compartidos ---------- */
+/* Usar estas clases en vez de gridTemplateColumns inline — así el
+   colapso a 1 columna en pantallas chicas queda en un solo lugar. */
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.sidebar-layout { display: grid; grid-template-columns: 1fr 340px; gap: 20px; }
+
+@media (max-width: 860px) {
+  .grid-3 { grid-template-columns: 1fr 1fr; }
+  .grid-4 { grid-template-columns: 1fr 1fr; }
+  .sidebar-layout { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .grid-2 { grid-template-columns: 1fr; }
+  .grid-3 { grid-template-columns: 1fr; }
+  .grid-4 { grid-template-columns: 1fr; }
+}
+
+/* ---------- Responsive: layout general / sidebar como panel deslizable ---------- */
+
+.mobile-topbar { display: none; }
+
+@media (max-width: 860px) {
+  .app-main { padding: 18px 16px !important; }
+
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--navy-900);
+    position: sticky;
+    top: 0;
+    z-index: 40;
+  }
+
+  .sidebar {
+    position: fixed !important;
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform 180ms ease;
+    box-shadow: 24px 0 48px rgba(0, 0, 0, 0.5);
+  }
+  .sidebar.open { transform: translateX(0); }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 7, 13, 0.6);
+    z-index: 50;
+  }
+}
+
+@media (min-width: 861px) {
+  .sidebar-backdrop { display: none; }
 }

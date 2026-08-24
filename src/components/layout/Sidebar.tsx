@@ -31,13 +31,14 @@ const NAV: NavItem[] = [
   { to: '/usuarios', label: 'Usuarios', roles: ['super_admin'] },
 ];
 
-export function Sidebar() {
+export function Sidebar({ open, onNavigate }: { open?: boolean; onNavigate?: () => void }) {
   const { profile, signOut } = useAuth();
 
   const visible = NAV.filter((item) => !item.roles || (profile && item.roles.includes(profile.role)));
 
   return (
     <aside
+      className={`sidebar${open ? ' open' : ''}`}
       style={{
         width: 240,
         flexShrink: 0,
@@ -48,6 +49,7 @@ export function Sidebar() {
         height: '100vh',
         position: 'sticky',
         top: 0,
+        left: 0,
       }}
     >
       <div style={{ padding: '22px 20px 18px' }}>
@@ -55,7 +57,7 @@ export function Sidebar() {
         <div style={{ fontSize: 11, color: 'var(--text-mute)', marginTop: 2 }}>Operations</div>
       </div>
 
-      <nav style={{ flex: 1, overflowY: 'auto', padding: '4px 12px' }}>
+      <nav style={{ flex: 1, overflowY: 'auto', padding: '4px 12px' }} onClick={onNavigate}>
         {visible.map((item) => (
           <div key={item.to} style={{ marginBottom: item.children ? 4 : 2 }}>
             <NavLink

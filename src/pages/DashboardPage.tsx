@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from 'recharts';
+import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from 'recharts';
 import { PageHeader } from '../components/ui/PageHeader';
 import { KpiCard } from '../components/ui/KpiCard';
 import { useDashboardTotals, useModuleTotals } from '../lib/api/hooks';
@@ -86,14 +86,18 @@ export function DashboardPage() {
     return rows.map((r) => ({
       date: parseLocalDate(r.operation_date).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }),
       fullDate: parseLocalDate(r.operation_date).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }),
+      ingresos: Number(r.gross_revenue),
+      costos: Number(r.total_costs),
       utilidad: Number(r.net_profit),
     }));
   }, [daily, periodDays]);
 
   const chartStats = useMemo(() => {
-    if (chartData.length === 0) return { total: 0, avg: 0 };
-    const total = chartData.reduce((s, r) => s + r.utilidad, 0);
-    return { total, avg: total / chartData.length };
+    if (chartData.length === 0) return { revenue: 0, costs: 0, profit: 0 };
+    return chartData.reduce(
+      (acc, r) => ({ revenue: acc.revenue + r.ingresos, costs: acc.costs + r.costos, profit: acc.profit + r.utilidad }),
+      { revenue: 0, costs: 0, profit: 0 }
+    );
   }, [chartData]);
 
   const loading = loadingDaily || loadingModules;
@@ -119,15 +123,11 @@ export function DashboardPage() {
       </Grid>
 
       <div className="card" style={{ marginBottom: 28 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <div style={{ fontSize: 12.5, color: 'var(--text-dim)', marginBottom: 6 }}>Utilidad por día</div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-              <span className="kpi-value" style={{ fontSize: 26 }}>
-                {fmtMoney(chartStats.total)}
-              </span>
-              <span style={{ fontSize: 12, color: 'var(--text-mute)' }}>en {periodDays} días · {fmtMoney(chartStats.avg)} promedio/día</span>
-            </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 14 }}>
+          <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap' }}>
+            <ChartStat dot="var(--chart-revenue)" label="Ingresos" value={fmtMoney(chartStats.revenue)} />
+            <ChartStat dot="var(--chart-cost)" label="Costos" value={fmtMoney(chartStats.costs)} />
+            <ChartStat dot="var(--chart-profit)" label="Utilidad" value={fmtMoney(chartStats.profit)} tone={chartStats.profit >= 0 ? 'pos' : 'neg'} />
           </div>
           <div style={{ display: 'flex', gap: 4, background: 'var(--navy-850)', border: '1px solid var(--border)', borderRadius: 8, padding: 3 }}>
             {PERIODS.map((p) => (
@@ -151,22 +151,9 @@ export function DashboardPage() {
           </div>
         </div>
 
-        <div style={{ height: 260 }}>
+        <div style={{ height: 280 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-              <defs>
-                <linearGradient id="profitFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--green-bright)" stopOpacity={0.32} />
-                  <stop offset="100%" stopColor="var(--green-bright)" stopOpacity={0} />
-                </linearGradient>
-                <filter id="lineGlow" x="-40%" y="-40%" width="180%" height="180%">
-                  <feGaussianBlur stdDeviation="3.2" result="blur" />
-                  <feMerge>
-                    <feMergeNode in="blur" />
-                    <feMergeNode in="SourceGraphic" />
-                  </feMerge>
-                </filter>
-              </defs>
+            <LineChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
               <CartesianGrid stroke="var(--border)" vertical={false} />
               <ReferenceLine y={0} stroke="var(--border-strong)" strokeWidth={1} />
               <XAxis
@@ -180,23 +167,46 @@ export function DashboardPage() {
               />
               <YAxis stroke="var(--text-mute)" fontSize={11} tickLine={false} axisLine={false} width={56} tickFormatter={(v) => fmtMoneyCompact(v)} />
               <Tooltip cursor={{ stroke: 'var(--border-strong)', strokeWidth: 1, strokeDasharray: '3 3' }} content={<ChartTooltip />} />
-              <Area
+              <Line
+                type="monotone"
+                dataKey="ingresos"
+                name="Ingresos"
+                stroke="var(--chart-revenue)"
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 5, fill: 'var(--chart-revenue)', stroke: 'var(--navy-900)', strokeWidth: 2 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="costos"
+                name="Costos"
+                stroke="var(--chart-cost)"
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 5, fill: 'var(--chart-cost)', stroke: 'var(--navy-900)', strokeWidth: 2 }}
+              />
+              <Line
                 type="monotone"
                 dataKey="utilidad"
-                stroke="var(--green-bright)"
-                fill="url(#profitFill)"
-                strokeWidth={2}
-                style={{ filter: 'url(#lineGlow)' }}
-                activeDot={{ r: 5, fill: 'var(--green-bright)', stroke: 'var(--navy-900)', strokeWidth: 2 }}
+                name="Utilidad"
+                stroke="var(--chart-profit)"
+                strokeWidth={2.5}
                 dot={false}
+                activeDot={{ r: 5, fill: 'var(--chart-profit)', stroke: 'var(--navy-900)', strokeWidth: 2 }}
               />
-            </AreaChart>
+            </LineChart>
           </ResponsiveContainer>
+        </div>
+
+        <div style={{ display: 'flex', gap: 18, marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)', flexWrap: 'wrap' }}>
+          <LegendKey color="var(--chart-revenue)" label="Ingresos" />
+          <LegendKey color="var(--chart-cost)" label="Costos" />
+          <LegendKey color="var(--chart-profit)" label="Utilidad" />
         </div>
       </div>
 
       <SectionTitle>Por módulo</SectionTitle>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 8 }}>
+      <div className="grid-3" style={{ marginBottom: 8 }}>
         <ModuleCard title="Transferencias" data={moduleCards.transferencia} extraLabel="Comisión promedio" extraValue={fmtPercent(moduleCards.transferencia.avgMargin)} />
         <ModuleCard title="Cripto" data={moduleCards.cripto} extraLabel="Margen promedio" extraValue={fmtPercent(moduleCards.cripto.avgMargin)} />
         <ModuleCard title="Efectivo" data={moduleCards.efectivo} extraLabel="Margen promedio" extraValue={fmtPercent(moduleCards.efectivo.avgMargin)} />
@@ -216,7 +226,11 @@ function SectionTitle({ children }: { children: string }) {
 }
 
 function Grid({ children }: { children: ReactNode }) {
-  return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>{children}</div>;
+  return (
+    <div className="grid-4" style={{ marginBottom: 28 }}>
+      {children}
+    </div>
+  );
 }
 
 function ModuleCard({
@@ -251,13 +265,14 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: 'pos
 }
 
 interface ChartTooltipPayload {
-  payload: { fullDate: string; utilidad: number };
+  color: string;
+  name: string;
+  value: number;
+  payload: { fullDate: string };
 }
 
 function ChartTooltip({ active, payload }: { active?: boolean; payload?: ChartTooltipPayload[] }) {
   if (!active || !payload?.length) return null;
-  const point = payload[0].payload;
-  const positive = point.utilidad >= 0;
   return (
     <div
       style={{
@@ -266,16 +281,44 @@ function ChartTooltip({ active, payload }: { active?: boolean; payload?: ChartTo
         borderRadius: 8,
         padding: '10px 12px',
         boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-        textTransform: 'capitalize',
+        minWidth: 160,
       }}
     >
-      <div style={{ fontSize: 11, color: 'var(--text-mute)', marginBottom: 6 }}>{point.fullDate}</div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-        <span style={{ width: 10, height: 2, background: positive ? 'var(--green-bright)' : 'var(--red)', display: 'inline-block', borderRadius: 1 }} />
-        <span className={`mono ${positive ? 'pos' : 'neg'}`} style={{ fontSize: 15, fontWeight: 700 }}>
-          {fmtMoney(point.utilidad)}
-        </span>
+      <div style={{ fontSize: 11, color: 'var(--text-mute)', marginBottom: 8, textTransform: 'capitalize' }}>{payload[0].payload.fullDate}</div>
+      {payload.map((entry) => (
+        <div key={entry.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '2px 0' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: 'var(--text-dim)' }}>
+            <span style={{ width: 10, height: 2, background: entry.color, display: 'inline-block', borderRadius: 1 }} />
+            {entry.name}
+          </span>
+          <span className="mono" style={{ fontSize: 13, fontWeight: 700 }}>
+            {fmtMoney(entry.value)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ChartStat({ dot, label, value, tone }: { dot: string; label: string; value: string; tone?: 'pos' | 'neg' }) {
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--text-dim)', marginBottom: 4 }}>
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, display: 'inline-block' }} />
+        {label}
+      </div>
+      <div className={`mono ${tone === 'pos' ? 'pos' : tone === 'neg' ? 'neg' : ''}`} style={{ fontSize: 19, fontWeight: 700 }}>
+        {value}
       </div>
     </div>
+  );
+}
+
+function LegendKey({ color, label }: { color: string; label: string }) {
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: 'var(--text-dim)' }}>
+      <span style={{ width: 12, height: 2, background: color, display: 'inline-block', borderRadius: 1 }} />
+      {label}
+    </span>
   );
 }

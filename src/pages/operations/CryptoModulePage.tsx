@@ -193,7 +193,7 @@ function CryptoForm({ onDone }: { onDone: () => void }) {
 
   return (
     <form onSubmit={handleSubmit}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+      <div className="grid-2">
         <div className="field">
           <label>Cliente</label>
           <select value={form.clientId} onChange={set('clientId')}>

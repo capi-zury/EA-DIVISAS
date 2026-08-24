@@ -28,7 +28,7 @@ export function ExchangeRatesPage() {
     <div>
       <PageHeader title="Tipos de Cambio" subtitle="Editable manualmente — cada operación guarda su propio snapshot al momento de crearse" />
 
-      <div style={{ display: 'grid', gridTemplateColumns: canEdit ? '1fr 320px' : '1fr', gap: 20 }}>
+      <div className={canEdit ? 'sidebar-layout' : undefined} style={canEdit ? undefined : { display: 'grid', gap: 20 }}>
         <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
           <table>
             <thead>

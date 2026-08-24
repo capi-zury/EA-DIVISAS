@@ -114,7 +114,7 @@ function CommissionForm({ onDone }: { onDone: () => void }) {
           <option value="mixta">Mixta</option>
         </select>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+      <div className="grid-2">
         <div className="field">
           <label>Monto fijo</label>
           <input type="number" step="any" value={form.fixed_amount} onChange={set('fixed_amount')} />

@@ -93,7 +93,7 @@ function ReconciliationForm({ onDone }: { onDone: () => void }) {
         <label>Contexto</label>
         <input required value={form.context} onChange={set('context')} placeholder='ej. "Corte de caja USD 2026-08-24"' />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+      <div className="grid-2">
         <div className="field">
           <label>Monto esperado</label>
           <input required type="number" step="any" value={form.expected_amount} onChange={set('expected_amount')} />
