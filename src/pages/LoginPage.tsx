@@ -23,9 +23,9 @@ export function LoginPage() {
   return (
     <div style={{ height: '100vh', display: 'grid', placeItems: 'center', padding: 24 }}>
       <div className="card" style={{ width: 380, maxWidth: '100%' }}>
-        <div style={{ marginBottom: 24, textAlign: 'center' }}>
-          <div style={{ fontSize: 12, letterSpacing: '0.16em', color: 'var(--electric-bright)', fontWeight: 700 }}>EA DIVISAS</div>
-          <h1 style={{ fontSize: 20, marginTop: 4 }}>Operations</h1>
+        <div style={{ marginBottom: 20, textAlign: 'center' }}>
+          <img src="/ea-divisas-logo.jpg" alt="EA Divisas" style={{ width: '100%', maxWidth: 300, borderRadius: 10, marginBottom: 10 }} />
+          <h1 style={{ fontSize: 16, fontWeight: 500, color: 'var(--text-dim)' }}>Operations</h1>
         </div>
 
         <form onSubmit={handleSubmit}>
