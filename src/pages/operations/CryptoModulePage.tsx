@@ -2,7 +2,18 @@ import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Modal } from '../../components/ui/Modal';
 import { Hint } from '../../components/ui/Hint';
-import { useClients, useCreateOperation, useCryptoAssets, useCryptoNetworks, useOperations, useProviders, useUpdateOperationStatus } from '../../lib/api/hooks';
+import { AttachmentsSection } from '../../components/ui/AttachmentsSection';
+import {
+  useClients,
+  useCreateOperation,
+  useCryptoAssets,
+  useCryptoNetworks,
+  useOperations,
+  useProviders,
+  useUpdateCryptoOperation,
+  useUpdateOperationStatus,
+} from '../../lib/api/hooks';
+import { useAuth } from '../../lib/auth/AuthContext';
 import { fmtDateTime, fmtMoney, fmtNumber, fmtPercent } from '../../lib/format';
 import { calcCrypto, toDisplayNumber } from '../../lib/calc-engine';
 import { OPERATION_STATUS_LABELS, ALLOWED_TRANSITIONS, type OperationStatus } from '../../lib/domain/operation-status';
@@ -10,6 +21,7 @@ import { OPERATION_STATUS_LABELS, ALLOWED_TRANSITIONS, type OperationStatus } fr
 export function CryptoModulePage() {
   const { data: operations, isLoading } = useOperations('cripto');
   const [showForm, setShowForm] = useState(false);
+  const [detailOp, setDetailOp] = useState<any | null>(null);
 
   return (
     <div>
@@ -36,25 +48,26 @@ export function CryptoModulePage() {
               <th className="num">Precio venta</th>
               <th className="num">Utilidad neta</th>
               <th>Estado</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={9} style={{ color: 'var(--text-mute)' }}>
+                <td colSpan={10} style={{ color: 'var(--text-mute)' }}>
                   Cargando…
                 </td>
               </tr>
             )}
             {!isLoading && (!operations || operations.length === 0) && (
               <tr>
-                <td colSpan={9} style={{ color: 'var(--text-mute)' }}>
+                <td colSpan={10} style={{ color: 'var(--text-mute)' }}>
                   Sin operaciones todavía.
                 </td>
               </tr>
             )}
             {operations?.map((op: any) => (
-              <OperationRow key={op.id} op={op} />
+              <OperationRow key={op.id} op={op} onOpenDetail={() => setDetailOp(op)} />
             ))}
           </tbody>
         </table>
@@ -63,11 +76,15 @@ export function CryptoModulePage() {
       <Modal open={showForm} onClose={() => setShowForm(false)} title="Nueva operación — Cripto" width={640}>
         <CryptoForm onDone={() => setShowForm(false)} />
       </Modal>
+
+      <Modal open={!!detailOp} onClose={() => setDetailOp(null)} title={`Operación ${detailOp?.folio ?? ''}`} width={640}>
+        {detailOp && <CryptoForm editOp={detailOp} onDone={() => setDetailOp(null)} />}
+      </Modal>
     </div>
   );
 }
 
-function OperationRow({ op }: { op: any }) {
+function OperationRow({ op, onOpenDetail }: { op: any; onOpenDetail: () => void }) {
   const detail = op.crypto_transactions;
   const { mutate: updateStatus, isPending } = useUpdateOperationStatus();
   const nextStates = ALLOWED_TRANSITIONS[op.status as OperationStatus] ?? [];
@@ -107,40 +124,55 @@ function OperationRow({ op }: { op: any }) {
           </select>
         )}
       </td>
+      <td>
+        <button className="btn-edit-ghost" style={{ background: 'none', border: 'none', color: 'var(--electric-bright)', cursor: 'pointer', fontSize: 12.5 }} onClick={onOpenDetail}>
+          Detalle
+        </button>
+      </td>
     </tr>
   );
 }
 
-function CryptoForm({ onDone }: { onDone: () => void }) {
+function CryptoForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
+  const { profile } = useAuth();
+  const canEdit = profile && ['super_admin', 'admin'].includes(profile.role);
+  const isEdit = !!editOp;
+  const detail = editOp?.crypto_transactions;
+
   const { data: clients } = useClients();
   const { data: assets } = useCryptoAssets();
   const { data: providers } = useProviders();
-  const { mutate: createOperation, isPending, error } = useCreateOperation();
+  const { mutate: createOperation, isPending: creating, error: createError } = useCreateOperation();
+  const { mutate: updateOperation, isPending: updating, error: updateError } = useUpdateCryptoOperation();
+  const isPending = creating || updating;
+  const error = createError || updateError;
 
-  const [assetCode, setAssetCode] = useState('');
+  const [assetCode, setAssetCode] = useState(detail?.crypto_asset_code ?? '');
   const { data: networks } = useCryptoNetworks(assetCode || null);
 
   const [form, setForm] = useState({
-    clientId: '',
-    providerId: '',
-    networkId: '',
-    quantity: '',
-    marketPrice: '',
-    buyPrice: '',
-    sellPrice: '',
-    providerFeeBuy: '0',
-    providerFeeSell: '0',
-    networkFee: '0',
-    customerFeeFixed: '0',
-    customerFeePercent: '0',
-    txHash: '',
-    walletOrigin: '',
-    walletDestination: '',
-    reference: '',
-    observations: '',
+    clientId: editOp?.client_id ?? '',
+    providerId: editOp?.provider_id ?? '',
+    networkId: detail?.crypto_network_id ?? '',
+    quantity: detail?.quantity != null ? String(detail.quantity) : '',
+    marketPrice: detail?.market_price != null ? String(detail.market_price) : '',
+    buyPrice: detail?.buy_price != null ? String(detail.buy_price) : '',
+    sellPrice: detail?.sell_price != null ? String(detail.sell_price) : '',
+    providerFeeBuy: detail?.provider_fee_buy != null ? String(detail.provider_fee_buy) : '0',
+    providerFeeSell: detail?.provider_fee_sell != null ? String(detail.provider_fee_sell) : '0',
+    networkFee: detail?.network_fee != null ? String(detail.network_fee) : '0',
+    customerFeeFixed: detail?.customer_fee_fixed != null ? String(detail.customer_fee_fixed) : '0',
+    customerFeePercent: detail?.customer_fee_percent != null ? String(detail.customer_fee_percent) : '0',
+    txHash: detail?.tx_hash ?? '',
+    walletOrigin: detail?.wallet_origin_address ?? '',
+    walletDestination: detail?.wallet_destination_address ?? '',
+    reference: editOp?.reference ?? '',
+    observations: editOp?.observations ?? '',
   });
 
   const set = (k: keyof typeof form) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const readOnly = isEdit && !canEdit;
 
   const preview = useMemo(() => {
     const n = (v: string) => (v === '' ? 0 : Number(v));
@@ -160,39 +192,85 @@ function CryptoForm({ onDone }: { onDone: () => void }) {
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    createOperation(
-      {
-        module: 'cripto',
-        header: {
-          client_id: form.clientId || null,
-          provider_id: form.providerId || null,
-          reference: form.reference || null,
-          observations: form.observations || null,
-          status: 'completada',
+    if (!preview) return;
+
+    const details = {
+      cryptoAssetCode: assetCode,
+      cryptoNetworkId: form.networkId,
+      txHash: form.txHash || null,
+      walletOriginAddress: form.walletOrigin || null,
+      walletDestinationAddress: form.walletDestination || null,
+      quantity: Number(form.quantity),
+      marketPrice: Number(form.marketPrice || form.buyPrice),
+      buyPrice: Number(form.buyPrice),
+      sellPrice: Number(form.sellPrice),
+      providerFeeBuy: Number(form.providerFeeBuy),
+      providerFeeSell: Number(form.providerFeeSell),
+      networkFee: Number(form.networkFee),
+      customerFeeFixed: Number(form.customerFeeFixed),
+      customerFeePercent: Number(form.customerFeePercent),
+    };
+
+    if (isEdit) {
+      updateOperation(
+        {
+          operationId: editOp.id,
+          header: {
+            client_id: form.clientId || null,
+            provider_id: form.providerId || null,
+            reference: form.reference || null,
+            observations: form.observations || null,
+            gross_revenue: toDisplayNumber(preview.totalRevenue),
+            total_costs: toDisplayNumber(preview.acquisitionCost) + Number(form.providerFeeSell) + Number(form.networkFee),
+            gross_profit: toDisplayNumber(preview.grossProfit),
+            net_profit: toDisplayNumber(preview.netProfit),
+            margin_percent: toDisplayNumber(preview.marginPercent),
+          },
+          details: {
+            crypto_asset_code: details.cryptoAssetCode,
+            crypto_network_id: details.cryptoNetworkId,
+            tx_hash: details.txHash,
+            wallet_origin_address: details.walletOriginAddress,
+            wallet_destination_address: details.walletDestinationAddress,
+            quantity: details.quantity,
+            market_price: details.marketPrice,
+            buy_price: details.buyPrice,
+            sell_price: details.sellPrice,
+            provider_fee_buy: details.providerFeeBuy,
+            provider_fee_sell: details.providerFeeSell,
+            network_fee: details.networkFee,
+            customer_fee_fixed: details.customerFeeFixed,
+            customer_fee_percent: details.customerFeePercent,
+            customer_fee_amount: toDisplayNumber(preview.customerFeeAmount),
+            spread_buy: toDisplayNumber(preview.spreadBuy),
+            spread_sell: toDisplayNumber(preview.spreadSell),
+            acquisition_cost: toDisplayNumber(preview.acquisitionCost),
+            total_revenue: toDisplayNumber(preview.totalRevenue),
+          },
         },
-        details: {
-          cryptoAssetCode: assetCode,
-          cryptoNetworkId: form.networkId,
-          txHash: form.txHash || null,
-          walletOriginAddress: form.walletOrigin || null,
-          walletDestinationAddress: form.walletDestination || null,
-          quantity: Number(form.quantity),
-          marketPrice: Number(form.marketPrice || form.buyPrice),
-          buyPrice: Number(form.buyPrice),
-          sellPrice: Number(form.sellPrice),
-          providerFeeBuy: Number(form.providerFeeBuy),
-          providerFeeSell: Number(form.providerFeeSell),
-          networkFee: Number(form.networkFee),
-          customerFeeFixed: Number(form.customerFeeFixed),
-          customerFeePercent: Number(form.customerFeePercent),
+        { onSuccess: onDone }
+      );
+    } else {
+      createOperation(
+        {
+          module: 'cripto',
+          header: {
+            client_id: form.clientId || null,
+            provider_id: form.providerId || null,
+            reference: form.reference || null,
+            observations: form.observations || null,
+            status: 'completada',
+          },
+          details,
         },
-      },
-      { onSuccess: onDone }
-    );
+        { onSuccess: onDone }
+      );
+    }
   }
 
   return (
     <form onSubmit={handleSubmit}>
+      <fieldset disabled={readOnly} style={{ border: 'none', padding: 0, margin: 0 }}>
       <div className="grid-2">
         <div className="field">
           <label>Cliente</label>
@@ -329,9 +407,22 @@ function CryptoForm({ onDone }: { onDone: () => void }) {
 
       {error && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>{(error as Error).message}</div>}
 
-      <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} disabled={isPending}>
-        {isPending ? 'Guardando…' : 'Registrar operación'}
-      </button>
+      {readOnly ? (
+        <div style={{ fontSize: 12.5, color: 'var(--text-mute)', marginBottom: 12 }}>
+          Solo un super_admin o admin puede corregir una operación ya creada.
+        </div>
+      ) : (
+        <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} disabled={isPending}>
+          {isPending ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Registrar operación'}
+        </button>
+      )}
+      </fieldset>
+
+      {isEdit && (
+        <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
+          <AttachmentsSection operationId={editOp.id} />
+        </div>
+      )}
     </form>
   );
 }

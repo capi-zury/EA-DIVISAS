@@ -2,7 +2,9 @@ import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Modal } from '../../components/ui/Modal';
 import { Hint } from '../../components/ui/Hint';
-import { useClients, useCreateOperation, useCurrencies, useOperations, useProviders, useUpdateOperationStatus } from '../../lib/api/hooks';
+import { AttachmentsSection } from '../../components/ui/AttachmentsSection';
+import { useClients, useCreateOperation, useCurrencies, useOperations, useProviders, useUpdateOperationStatus, useUpdateTransferOperation } from '../../lib/api/hooks';
+import { useAuth } from '../../lib/auth/AuthContext';
 import { fmtDateTime, fmtMoney } from '../../lib/format';
 import { calcTransfer, toDisplayNumber } from '../../lib/calc-engine';
 import { OPERATION_STATUS_LABELS, ALLOWED_TRANSITIONS, type OperationStatus } from '../../lib/domain/operation-status';
@@ -10,6 +12,7 @@ import { OPERATION_STATUS_LABELS, ALLOWED_TRANSITIONS, type OperationStatus } fr
 export function TransfersModulePage() {
   const { data: operations, isLoading } = useOperations('transferencia');
   const [showForm, setShowForm] = useState(false);
+  const [detailOp, setDetailOp] = useState<any | null>(null);
 
   return (
     <div>
@@ -35,25 +38,26 @@ export function TransfersModulePage() {
               <th className="num">Recibido</th>
               <th className="num">Utilidad neta</th>
               <th>Estado</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={8} style={{ color: 'var(--text-mute)' }}>
+                <td colSpan={9} style={{ color: 'var(--text-mute)' }}>
                   Cargando…
                 </td>
               </tr>
             )}
             {!isLoading && (!operations || operations.length === 0) && (
               <tr>
-                <td colSpan={8} style={{ color: 'var(--text-mute)' }}>
+                <td colSpan={9} style={{ color: 'var(--text-mute)' }}>
                   Sin operaciones todavía.
                 </td>
               </tr>
             )}
             {operations?.map((op: any) => (
-              <TransferRow key={op.id} op={op} />
+              <TransferRow key={op.id} op={op} onOpenDetail={() => setDetailOp(op)} />
             ))}
           </tbody>
         </table>
@@ -62,11 +66,15 @@ export function TransfersModulePage() {
       <Modal open={showForm} onClose={() => setShowForm(false)} title="Nueva operación — Transferencia" width={640}>
         <TransferForm onDone={() => setShowForm(false)} />
       </Modal>
+
+      <Modal open={!!detailOp} onClose={() => setDetailOp(null)} title={`Operación ${detailOp?.folio ?? ''}`} width={640}>
+        {detailOp && <TransferForm editOp={detailOp} onDone={() => setDetailOp(null)} />}
+      </Modal>
     </div>
   );
 }
 
-function TransferRow({ op }: { op: any }) {
+function TransferRow({ op, onOpenDetail }: { op: any; onOpenDetail: () => void }) {
   const detail = op.international_transfers;
   const { mutate: updateStatus, isPending } = useUpdateOperationStatus();
   const nextStates = ALLOWED_TRANSITIONS[op.status as OperationStatus] ?? [];
@@ -109,37 +117,51 @@ function TransferRow({ op }: { op: any }) {
           </select>
         )}
       </td>
+      <td>
+        <button style={{ background: 'none', border: 'none', color: 'var(--electric-bright)', cursor: 'pointer', fontSize: 12.5 }} onClick={onOpenDetail}>
+          Detalle
+        </button>
+      </td>
     </tr>
   );
 }
 
-function TransferForm({ onDone }: { onDone: () => void }) {
+function TransferForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
+  const { profile } = useAuth();
+  const canEdit = profile && ['super_admin', 'admin'].includes(profile.role);
+  const isEdit = !!editOp;
+  const detail = editOp?.international_transfers;
+
   const { data: clients } = useClients();
   const { data: currencies } = useCurrencies();
   const { data: providers } = useProviders();
-  const { mutate: createOperation, isPending, error } = useCreateOperation();
+  const { mutate: createOperation, isPending: creating, error: createError } = useCreateOperation();
+  const { mutate: updateOperation, isPending: updating, error: updateError } = useUpdateTransferOperation();
+  const isPending = creating || updating;
+  const error = createError || updateError;
 
   const [form, setForm] = useState({
-    clientId: '',
-    providerId: '',
-    contactPhone: '',
-    countryOrigin: '',
-    countryDestination: '',
-    currencyOrigin: 'USD',
-    currencyDestination: 'MXN',
-    amountSent: '',
-    buyRate: '',
-    sellRate: '',
-    commissionFixed: '0',
-    commissionPercent: '0',
-    providerCost: '0',
-    bankCost: '0',
-    additionalCost: '0',
-    reference: '',
-    observations: '',
+    clientId: editOp?.client_id ?? '',
+    providerId: editOp?.provider_id ?? '',
+    contactPhone: detail?.contact_phone ?? '',
+    countryOrigin: detail?.country_origin ?? '',
+    countryDestination: detail?.country_destination ?? '',
+    currencyOrigin: detail?.currency_origin ?? 'USD',
+    currencyDestination: detail?.currency_destination ?? 'MXN',
+    amountSent: detail?.amount_sent != null ? String(detail.amount_sent) : '',
+    buyRate: detail?.buy_rate != null ? String(detail.buy_rate) : '',
+    sellRate: detail?.sell_rate != null ? String(detail.sell_rate) : '',
+    commissionFixed: detail?.commission_fixed != null ? String(detail.commission_fixed) : '0',
+    commissionPercent: detail?.commission_percent != null ? String(detail.commission_percent) : '0',
+    providerCost: detail?.provider_cost != null ? String(detail.provider_cost) : '0',
+    bankCost: detail?.bank_cost != null ? String(detail.bank_cost) : '0',
+    additionalCost: detail?.additional_cost != null ? String(detail.additional_cost) : '0',
+    reference: editOp?.reference ?? '',
+    observations: editOp?.observations ?? '',
   });
 
   const set = (k: keyof typeof form) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const readOnly = isEdit && !canEdit;
 
   const preview = useMemo(() => {
     const n = (v: string) => (v === '' ? 0 : Number(v));
@@ -158,6 +180,48 @@ function TransferForm({ onDone }: { onDone: () => void }) {
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!preview) return;
+
+    if (isEdit) {
+      updateOperation(
+        {
+          operationId: editOp.id,
+          header: {
+            client_id: form.clientId || null,
+            provider_id: form.providerId || null,
+            reference: form.reference || null,
+            observations: form.observations || null,
+            gross_revenue: toDisplayNumber(preview.grossRevenue),
+            total_costs: toDisplayNumber(preview.totalCosts),
+            gross_profit: toDisplayNumber(preview.grossProfit),
+            net_profit: toDisplayNumber(preview.netProfit),
+            margin_percent: toDisplayNumber(preview.marginPercent),
+          },
+          details: {
+            contact_phone: form.contactPhone || null,
+            country_origin: form.countryOrigin,
+            country_destination: form.countryDestination,
+            currency_origin: form.currencyOrigin,
+            currency_destination: form.currencyDestination,
+            amount_sent: Number(form.amountSent),
+            amount_received: toDisplayNumber(preview.amountReceived),
+            exchange_rate_applied: Number(form.sellRate),
+            buy_rate: Number(form.buyRate),
+            sell_rate: Number(form.sellRate),
+            commission_fixed: Number(form.commissionFixed),
+            commission_percent: Number(form.commissionPercent),
+            commission_amount: toDisplayNumber(preview.commissionAmount),
+            provider_cost: Number(form.providerCost),
+            bank_cost: Number(form.bankCost),
+            additional_cost: Number(form.additionalCost),
+            spread_revenue: toDisplayNumber(preview.spreadRevenue),
+          },
+        },
+        { onSuccess: onDone }
+      );
+      return;
+    }
+
     createOperation(
       {
         module: 'transferencia',
@@ -190,6 +254,7 @@ function TransferForm({ onDone }: { onDone: () => void }) {
 
   return (
     <form onSubmit={handleSubmit}>
+      <fieldset disabled={readOnly} style={{ border: 'none', padding: 0, margin: 0 }}>
       <div className="grid-2">
         <div className="field">
           <label>Cliente</label>
@@ -308,9 +373,22 @@ function TransferForm({ onDone }: { onDone: () => void }) {
 
       {error && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>{(error as Error).message}</div>}
 
-      <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} disabled={isPending}>
-        {isPending ? 'Guardando…' : 'Registrar operación'}
-      </button>
+      {readOnly ? (
+        <div style={{ fontSize: 12.5, color: 'var(--text-mute)', marginBottom: 12 }}>
+          Solo un super_admin o admin puede corregir una operación ya creada.
+        </div>
+      ) : (
+        <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} disabled={isPending}>
+          {isPending ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Registrar operación'}
+        </button>
+      )}
+      </fieldset>
+
+      {isEdit && (
+        <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
+          <AttachmentsSection operationId={editOp.id} />
+        </div>
+      )}
     </form>
   );
 }

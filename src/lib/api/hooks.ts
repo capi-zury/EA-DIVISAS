@@ -259,6 +259,97 @@ export function useUpdateOperationStatus() {
   });
 }
 
+interface UpdateOperationBody {
+  operationId: string;
+  header: Record<string, unknown>;
+  details: Record<string, unknown>;
+}
+
+function useUpdateOperationRpc(rpcName: 'update_transfer_operation' | 'update_crypto_operation' | 'update_cash_operation', module: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ operationId, header, details }: UpdateOperationBody) => {
+      const { data, error } = await supabase.rpc(rpcName, { p_operation_id: operationId, p_header: header, p_details: details });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['operations', module] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['audit_logs'] });
+    },
+  });
+}
+
+export function useUpdateTransferOperation() {
+  return useUpdateOperationRpc('update_transfer_operation', 'transferencia');
+}
+
+export function useUpdateCryptoOperation() {
+  return useUpdateOperationRpc('update_crypto_operation', 'cripto');
+}
+
+export function useUpdateCashOperation() {
+  return useUpdateOperationRpc('update_cash_operation', 'efectivo');
+}
+
+// ---------- Comprobantes (Supabase Storage) ----------
+
+export function useAttachments(operationId: string | null) {
+  return useQuery({
+    queryKey: ['attachments', operationId],
+    enabled: !!operationId,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('attachments').select('*').eq('operation_id', operationId!).order('uploaded_at', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useUploadAttachment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ operationId, file }: { operationId: string; file: File }) => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const uid = sessionData.session?.user.id;
+      const safeName = file.name.replace(/[^\w.\-]+/g, '_');
+      const path = `${operationId}/${Date.now()}-${safeName}`;
+
+      const { error: uploadError } = await supabase.storage.from('attachments').upload(path, file, { contentType: file.type || undefined });
+      if (uploadError) throw uploadError;
+
+      const { data, error } = await supabase
+        .from('attachments')
+        .insert({ operation_id: operationId, file_path: path, file_name: file.name, file_type: file.type, file_size_bytes: file.size, uploaded_by: uid })
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => qc.invalidateQueries({ queryKey: ['attachments', data.operation_id] }),
+  });
+}
+
+export async function getAttachmentUrl(filePath: string): Promise<string> {
+  const { data, error } = await supabase.storage.from('attachments').createSignedUrl(filePath, 300);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
+export function useDeleteAttachment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, filePath, operationId }: { id: string; filePath: string; operationId: string }) => {
+      await supabase.storage.from('attachments').remove([filePath]);
+      const { error } = await supabase.from('attachments').delete().eq('id', id);
+      if (error) throw error;
+      return operationId;
+    },
+    onSuccess: (operationId) => qc.invalidateQueries({ queryKey: ['attachments', operationId] }),
+  });
+}
+
 // ---------- Dashboard ----------
 
 export function useDashboardTotals() {

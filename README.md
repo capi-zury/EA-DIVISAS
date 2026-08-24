@@ -119,8 +119,11 @@ npx netlify-cli deploy --prod --build
 
 Este sistema es funcional de punta a punta (auth, RLS, motor de cálculo, los 3 módulos, dashboard, clientes, tipos de cambio, proveedores, comisiones, conciliación, reportes con exportación, auditoría, usuarios) pero hay áreas para seguir puliendo:
 
-- **Diseño visual**: el sistema de diseño (negro/marino/azul eléctrico, cards, tablas) está aplicado consistentemente, pero no se ha revisado en un navegador real con Chrome DevTools conectado — vale la pena un pase visual.
+- **Diseño visual**: el sistema de diseño (negro/marino/azul eléctrico, cards, tablas) está aplicado consistentemente y es responsivo (celular/tablet/escritorio), pero no se ha revisado en un navegador real con Chrome DevTools conectado — vale la pena un pase visual.
 - **Métricas de dashboard más finas por módulo** (spread generado y fees desglosados para cripto, USD comprados vs. vendidos para efectivo) — hoy el dashboard usa las vistas agregadas globales; se puede añadir una vista SQL dedicada si se necesita ese nivel de detalle.
-- **Adjuntos/comprobantes**: la tabla `attachments` y sus políticas RLS existen, falta la pantalla de subida (requiere configurar un bucket de Supabase Storage).
-- **Editar/corregir una operación existente** (más allá de cambiar estado): hoy `super_admin`/`admin` tienen permiso de `UPDATE` vía RLS, falta el formulario de edición en la UI.
 - **PDF real**: el botón "PDF" usa impresión del navegador (`window.print()`); si se necesita un PDF generado del lado servidor con diseño propio, se puede añadir una librería dedicada.
+
+### Ya resuelto (antes estaba aquí como pendiente)
+
+- **Comprobantes**: bucket privado de Supabase Storage (`attachments`, 15MB por archivo) con políticas RLS calcadas de la tabla `attachments`. Botón "Detalle" en cada operación abre subir/ver/borrar comprobantes (URLs firmadas, nunca públicas).
+- **Editar una operación ya creada**: mismo botón "Detalle" — `super_admin`/`admin` ven el formulario pre-llenado y editable (recalcula con el mismo motor de cálculo antes de guardar); `operador`/`auditor` lo ven en solo lectura. Cambios quedan en `audit_logs` automáticamente (mismos triggers que la creación).

@@ -2,7 +2,9 @@ import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Modal } from '../../components/ui/Modal';
 import { Hint } from '../../components/ui/Hint';
-import { useClients, useCreateOperation, useCurrencies, useOperations, useUpdateOperationStatus } from '../../lib/api/hooks';
+import { AttachmentsSection } from '../../components/ui/AttachmentsSection';
+import { useClients, useCreateOperation, useCurrencies, useOperations, useUpdateCashOperation, useUpdateOperationStatus } from '../../lib/api/hooks';
+import { useAuth } from '../../lib/auth/AuthContext';
 import { fmtDateTime, fmtMoney, fmtNumber } from '../../lib/format';
 import { calcCash, toDisplayNumber } from '../../lib/calc-engine';
 import { OPERATION_STATUS_LABELS, ALLOWED_TRANSITIONS, type OperationStatus } from '../../lib/domain/operation-status';
@@ -10,6 +12,7 @@ import { OPERATION_STATUS_LABELS, ALLOWED_TRANSITIONS, type OperationStatus } fr
 export function CashModulePage() {
   const { data: operations, isLoading } = useOperations('efectivo');
   const [showForm, setShowForm] = useState(false);
+  const [detailOp, setDetailOp] = useState<any | null>(null);
 
   return (
     <div>
@@ -36,25 +39,26 @@ export function CashModulePage() {
               <th className="num">Precio venta</th>
               <th className="num">Utilidad neta</th>
               <th>Estado</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={9} style={{ color: 'var(--text-mute)' }}>
+                <td colSpan={10} style={{ color: 'var(--text-mute)' }}>
                   Cargando…
                 </td>
               </tr>
             )}
             {!isLoading && (!operations || operations.length === 0) && (
               <tr>
-                <td colSpan={9} style={{ color: 'var(--text-mute)' }}>
+                <td colSpan={10} style={{ color: 'var(--text-mute)' }}>
                   Sin operaciones todavía.
                 </td>
               </tr>
             )}
             {operations?.map((op: any) => (
-              <CashRow key={op.id} op={op} />
+              <CashRow key={op.id} op={op} onOpenDetail={() => setDetailOp(op)} />
             ))}
           </tbody>
         </table>
@@ -63,11 +67,15 @@ export function CashModulePage() {
       <Modal open={showForm} onClose={() => setShowForm(false)} title="Nueva operación — Efectivo" width={560}>
         <CashForm onDone={() => setShowForm(false)} />
       </Modal>
+
+      <Modal open={!!detailOp} onClose={() => setDetailOp(null)} title={`Operación ${detailOp?.folio ?? ''}`} width={560}>
+        {detailOp && <CashForm editOp={detailOp} onDone={() => setDetailOp(null)} />}
+      </Modal>
     </div>
   );
 }
 
-function CashRow({ op }: { op: any }) {
+function CashRow({ op, onOpenDetail }: { op: any; onOpenDetail: () => void }) {
   const detail = op.cash_transactions;
   const { mutate: updateStatus, isPending } = useUpdateOperationStatus();
   const nextStates = ALLOWED_TRANSITIONS[op.status as OperationStatus] ?? [];
@@ -107,30 +115,44 @@ function CashRow({ op }: { op: any }) {
           </select>
         )}
       </td>
+      <td>
+        <button style={{ background: 'none', border: 'none', color: 'var(--electric-bright)', cursor: 'pointer', fontSize: 12.5 }} onClick={onOpenDetail}>
+          Detalle
+        </button>
+      </td>
     </tr>
   );
 }
 
-function CashForm({ onDone }: { onDone: () => void }) {
+function CashForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
+  const { profile } = useAuth();
+  const canEdit = profile && ['super_admin', 'admin'].includes(profile.role);
+  const isEdit = !!editOp;
+  const detail = editOp?.cash_transactions;
+
   const { data: clients } = useClients();
   const { data: currencies } = useCurrencies();
-  const { mutate: createOperation, isPending, error } = useCreateOperation();
+  const { mutate: createOperation, isPending: creating, error: createError } = useCreateOperation();
+  const { mutate: updateOperation, isPending: updating, error: updateError } = useUpdateCashOperation();
+  const isPending = creating || updating;
+  const error = createError || updateError;
 
   const [form, setForm] = useState({
-    clientId: '',
-    currencyCode: 'USD',
-    denomination: '',
-    quantity: '',
-    buyPrice: '',
-    sellPrice: '',
-    commissionFixed: '0',
-    commissionPercent: '0',
+    clientId: editOp?.client_id ?? '',
+    currencyCode: detail?.currency_code ?? 'USD',
+    denomination: detail?.denomination ?? '',
+    quantity: detail?.quantity != null ? String(detail.quantity) : '',
+    buyPrice: detail?.buy_price != null ? String(detail.buy_price) : '',
+    sellPrice: detail?.sell_price != null ? String(detail.sell_price) : '',
+    commissionFixed: detail?.commission_fixed != null ? String(detail.commission_fixed) : '0',
+    commissionPercent: detail?.commission_percent != null ? String(detail.commission_percent) : '0',
     additionalCosts: '0',
-    reference: '',
-    observations: '',
+    reference: editOp?.reference ?? '',
+    observations: editOp?.observations ?? '',
   });
 
   const set = (k: keyof typeof form) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const readOnly = isEdit && !canEdit;
 
   const preview = useMemo(() => {
     const n = (v: string) => (v === '' ? 0 : Number(v));
@@ -147,6 +169,40 @@ function CashForm({ onDone }: { onDone: () => void }) {
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!preview) return;
+
+    if (isEdit) {
+      updateOperation(
+        {
+          operationId: editOp.id,
+          header: {
+            client_id: form.clientId || null,
+            reference: form.reference || null,
+            observations: form.observations || null,
+            gross_revenue: toDisplayNumber(preview.revenue),
+            total_costs: toDisplayNumber(preview.cost) + Number(form.additionalCosts),
+            gross_profit: toDisplayNumber(preview.grossProfit),
+            net_profit: toDisplayNumber(preview.netProfit),
+            margin_percent: toDisplayNumber(preview.marginPercent),
+          },
+          details: {
+            currency_code: form.currencyCode,
+            denomination: form.denomination || null,
+            quantity: Number(form.quantity),
+            buy_price: Number(form.buyPrice),
+            sell_price: Number(form.sellPrice),
+            commission_fixed: Number(form.commissionFixed),
+            commission_percent: Number(form.commissionPercent),
+            commission_amount: toDisplayNumber(preview.commissionAmount),
+            spread_per_unit: toDisplayNumber(preview.spreadPerUnit),
+            spread_total: toDisplayNumber(preview.spreadTotal),
+          },
+        },
+        { onSuccess: onDone }
+      );
+      return;
+    }
+
     createOperation(
       {
         module: 'efectivo',
@@ -173,6 +229,7 @@ function CashForm({ onDone }: { onDone: () => void }) {
 
   return (
     <form onSubmit={handleSubmit}>
+      <fieldset disabled={readOnly} style={{ border: 'none', padding: 0, margin: 0 }}>
       <div className="grid-2">
         <div className="field">
           <label>Cliente</label>
@@ -247,9 +304,22 @@ function CashForm({ onDone }: { onDone: () => void }) {
 
       {error && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>{(error as Error).message}</div>}
 
-      <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} disabled={isPending}>
-        {isPending ? 'Guardando…' : 'Registrar operación'}
-      </button>
+      {readOnly ? (
+        <div style={{ fontSize: 12.5, color: 'var(--text-mute)', marginBottom: 12 }}>
+          Solo un super_admin o admin puede corregir una operación ya creada.
+        </div>
+      ) : (
+        <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} disabled={isPending}>
+          {isPending ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Registrar operación'}
+        </button>
+      )}
+      </fieldset>
+
+      {isEdit && (
+        <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
+          <AttachmentsSection operationId={editOp.id} />
+        </div>
+      )}
     </form>
   );
 }
