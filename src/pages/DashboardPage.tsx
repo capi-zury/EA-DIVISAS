@@ -1,8 +1,8 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from 'recharts';
-import { PageHeader } from '../components/ui/PageHeader';
+import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from 'recharts';
 import { KpiCard } from '../components/ui/KpiCard';
-import { useDashboardTotals, useModuleTotals } from '../lib/api/hooks';
+import { useDashboardTotals, useExchangeRates, useModuleTotals, useOperatorTotals } from '../lib/api/hooks';
 import { fmtMoney, fmtMoneyCompact, fmtNumber, fmtPercent, parseLocalDate, toLocalDateString } from '../lib/format';
 
 const PERIODS = [
@@ -10,6 +10,8 @@ const PERIODS = [
   { days: 30, label: '30 días' },
   { days: 90, label: '90 días' },
 ] as const;
+
+const REFRESH_MS = 60_000;
 
 function startOfWeek(d: Date) {
   const day = d.getDay();
@@ -21,25 +23,52 @@ function startOfWeek(d: Date) {
 }
 
 export function DashboardPage() {
+  const qc = useQueryClient();
   const { data: daily, isLoading: loadingDaily } = useDashboardTotals();
   const { data: moduleTotals, isLoading: loadingModules } = useModuleTotals();
+  const { data: operatorTotals } = useOperatorTotals();
+  const { data: rates } = useExchangeRates();
+
+  // Auto-refresco: el tablero vive en una pantalla, nadie va a recargar.
+  useEffect(() => {
+    const id = setInterval(() => {
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['exchange_rates'] });
+      qc.invalidateQueries({ queryKey: ['operations'] });
+    }, REFRESH_MS);
+    return () => clearInterval(id);
+  }, [qc]);
+
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    // Fuerza recalcular los rangos de fecha una vez por minuto para que
+    // "hoy / semana / mes" no se queden pegados si la pantalla lleva días
+    // encendida.
+    const id = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   // Todo en string "YYYY-MM-DD" en hora LOCAL — nunca Date directo, para no
   // caer en el desfase de un día que da comparar contra UTC (ver parseLocalDate).
   const ranges = useMemo(() => {
     const now = new Date();
-    const today = toLocalDateString(now);
-    const weekStart = toLocalDateString(startOfWeek(now));
-    const monthStart = toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
-    const yearStart = toLocalDateString(new Date(now.getFullYear(), 0, 1));
-    return { today, weekStart, monthStart, yearStart };
-  }, []);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return {
+      today: toLocalDateString(now),
+      weekStart: toLocalDateString(startOfWeek(now)),
+      monthStart: toLocalDateString(monthStart),
+      prevMonthStart: toLocalDateString(prevMonthStart),
+      yearStart: toLocalDateString(new Date(now.getFullYear(), 0, 1)),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick]);
 
   const totals = useMemo(() => {
     const rows = daily ?? [];
-    const sum = (from: string) =>
+    const sum = (from: string, to?: string) =>
       rows
-        .filter((r) => r.operation_date >= from)
+        .filter((r) => r.operation_date >= from && (to === undefined || r.operation_date < to))
         .reduce(
           (acc, r) => ({
             operations: acc.operations + Number(r.operations_count),
@@ -54,9 +83,14 @@ export function DashboardPage() {
       today: sum(ranges.today),
       week: sum(ranges.weekStart),
       month: sum(ranges.monthStart),
+      prevMonth: sum(ranges.prevMonthStart, ranges.monthStart),
       year: sum(ranges.yearStart),
     };
   }, [daily, ranges]);
+
+  const monthMargin = totals.month.revenue > 0 ? (totals.month.profit / totals.month.revenue) * 100 : 0;
+  const monthDelta =
+    totals.prevMonth.profit === 0 ? null : ((totals.month.profit - totals.prevMonth.profit) / Math.abs(totals.prevMonth.profit)) * 100;
 
   const moduleCards = useMemo(() => {
     const rows = moduleTotals ?? [];
@@ -78,6 +112,26 @@ export function DashboardPage() {
     };
     return { transferencia: build('transferencia'), cripto: build('cripto'), efectivo: build('efectivo') };
   }, [moduleTotals]);
+
+  const maxModuleProfit = Math.max(
+    1,
+    moduleCards.transferencia.profit,
+    moduleCards.cripto.profit,
+    moduleCards.efectivo.profit
+  );
+
+  const leaderboard = useMemo(() => {
+    const rows = (operatorTotals ?? []).filter((r) => r.operation_date >= ranges.monthStart);
+    const acc = new Map<string, { name: string; profit: number; operations: number }>();
+    for (const r of rows) {
+      const key = r.operator_name ?? '—';
+      const cur = acc.get(key) ?? { name: key, profit: 0, operations: 0 };
+      cur.profit += Number(r.net_profit);
+      cur.operations += Number(r.operations_count);
+      acc.set(key, cur);
+    }
+    return [...acc.values()].sort((a, b) => b.profit - a.profit).slice(0, 5);
+  }, [operatorTotals, ranges.monthStart]);
 
   const [periodDays, setPeriodDays] = useState<number>(30);
 
@@ -101,30 +155,62 @@ export function DashboardPage() {
   }, [chartData]);
 
   const loading = loadingDaily || loadingModules;
+  const activeRates = (rates ?? []).slice(0, 6);
 
   return (
     <div>
-      <PageHeader title="Resumen" subtitle="Resumen operativo de EA Divisas" />
+      <div className="dash-header">
+        <div>
+          <div className="dash-title">
+            EA DIVISAS <span>· Operaciones</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 12.5, color: 'var(--text-mute)' }}>
+            <span className="live-dot" /> En vivo · se actualiza cada minuto
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <LiveClock />
+          <FullscreenButton />
+        </div>
+      </div>
 
-      <SectionTitle>Hoy</SectionTitle>
-      <Grid>
-        <KpiCard label="Operaciones" value={fmtNumber(totals.today.operations, 0)} />
-        <KpiCard label="Ingresos" value={fmtMoney(totals.today.revenue)} />
-        <KpiCard label="Costos" value={fmtMoney(totals.today.costs)} />
-        <KpiCard label="Utilidad" value={fmtMoney(totals.today.profit)} tone={totals.today.profit >= 0 ? 'pos' : 'neg'} />
-      </Grid>
+      <div className="dash-hero-grid">
+        <div className="hero-card accent-green">
+          <div className="hero-label">Utilidad del mes</div>
+          <div className={`hero-value ${totals.month.profit >= 0 ? 'pos' : 'neg'}`}>{fmtMoney(totals.month.profit)}</div>
+          <div className="hero-sub" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {monthDelta === null ? (
+              <span className="delta-chip flat">— sin mes previo</span>
+            ) : (
+              <span className={`delta-chip ${monthDelta > 0.5 ? 'up' : monthDelta < -0.5 ? 'down' : 'flat'}`}>
+                {monthDelta > 0 ? '▲' : monthDelta < 0 ? '▼' : '='} {fmtNumber(Math.abs(monthDelta), 1)}% vs mes anterior
+              </span>
+            )}
+            <span>
+              Margen {fmtPercent(monthMargin)} · {fmtNumber(totals.month.operations, 0)} operaciones
+            </span>
+          </div>
+        </div>
 
-      <SectionTitle>Utilidad</SectionTitle>
-      <Grid>
-        <KpiCard label="Del día" value={fmtMoney(totals.today.profit)} tone={totals.today.profit >= 0 ? 'pos' : 'neg'} />
-        <KpiCard label="De la semana" value={fmtMoney(totals.week.profit)} tone={totals.week.profit >= 0 ? 'pos' : 'neg'} />
-        <KpiCard label="Del mes" value={fmtMoney(totals.month.profit)} tone={totals.month.profit >= 0 ? 'pos' : 'neg'} />
-        <KpiCard label="Del año" value={fmtMoney(totals.year.profit)} tone={totals.year.profit >= 0 ? 'pos' : 'neg'} />
-      </Grid>
+        <div className="hero-card">
+          <div className="hero-label">Hoy</div>
+          <div className={`hero-value sm ${totals.today.profit >= 0 ? 'pos' : 'neg'}`}>{fmtMoney(totals.today.profit)}</div>
+          <div className="hero-sub">
+            {fmtNumber(totals.today.operations, 0)} operaciones · ingresos {fmtMoney(totals.today.revenue)}
+          </div>
+        </div>
+      </div>
 
-      <div className="card" style={{ marginBottom: 28 }}>
+      <div className="grid-4" style={{ marginBottom: 18 }}>
+        <KpiCard label="Utilidad semana" value={fmtMoney(totals.week.profit)} tone={totals.week.profit >= 0 ? 'pos' : 'neg'} />
+        <KpiCard label="Ingresos mes" value={fmtMoney(totals.month.revenue)} />
+        <KpiCard label="Costos mes" value={fmtMoney(totals.month.costs)} />
+        <KpiCard label="Utilidad año" value={fmtMoney(totals.year.profit)} tone={totals.year.profit >= 0 ? 'pos' : 'neg'} />
+      </div>
+
+      <div className="card" style={{ marginBottom: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 14 }}>
-          <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 30, flexWrap: 'wrap' }}>
             <ChartStat dot="var(--chart-revenue)" label="Ingresos" value={fmtMoney(chartStats.revenue)} />
             <ChartStat dot="var(--chart-cost)" label="Costos" value={fmtMoney(chartStats.costs)} />
             <ChartStat dot="var(--chart-profit)" label="Utilidad" value={fmtMoney(chartStats.profit)} tone={chartStats.profit >= 0 ? 'pos' : 'neg'} />
@@ -137,8 +223,8 @@ export function DashboardPage() {
                 style={{
                   border: 'none',
                   borderRadius: 6,
-                  padding: '5px 12px',
-                  fontSize: 12,
+                  padding: '6px 14px',
+                  fontSize: 12.5,
                   fontWeight: 600,
                   cursor: 'pointer',
                   color: periodDays === p.days ? '#fff' : 'var(--text-dim)',
@@ -151,65 +237,130 @@ export function DashboardPage() {
           </div>
         </div>
 
-        <div style={{ height: 280 }}>
+        <div style={{ height: 320 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
+              <defs>
+                <linearGradient id="gRevenue" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--chart-revenue)" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="var(--chart-revenue)" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="gProfit" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--chart-profit)" stopOpacity={0.4} />
+                  <stop offset="100%" stopColor="var(--chart-profit)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
               <CartesianGrid stroke="var(--border)" vertical={false} />
               <ReferenceLine y={0} stroke="var(--border-strong)" strokeWidth={1} />
               <XAxis
                 dataKey="date"
                 stroke="var(--text-mute)"
-                fontSize={11}
+                fontSize={11.5}
                 tickLine={false}
                 axisLine={false}
                 interval={periodDays > 30 ? Math.ceil(periodDays / 12) : 'preserveStartEnd'}
                 minTickGap={24}
               />
-              <YAxis stroke="var(--text-mute)" fontSize={11} tickLine={false} axisLine={false} width={56} tickFormatter={(v) => fmtMoneyCompact(v)} />
+              <YAxis stroke="var(--text-mute)" fontSize={11.5} tickLine={false} axisLine={false} width={58} tickFormatter={(v) => fmtMoneyCompact(v)} />
               <Tooltip cursor={{ stroke: 'var(--border-strong)', strokeWidth: 1, strokeDasharray: '3 3' }} content={<ChartTooltip />} />
-              <Line
+              <Area
                 type="monotone"
                 dataKey="ingresos"
                 name="Ingresos"
                 stroke="var(--chart-revenue)"
                 strokeWidth={2}
-                dot={false}
+                fill="url(#gRevenue)"
                 activeDot={{ r: 5, fill: 'var(--chart-revenue)', stroke: 'var(--navy-900)', strokeWidth: 2 }}
               />
-              <Line
+              <Area
                 type="monotone"
                 dataKey="costos"
                 name="Costos"
                 stroke="var(--chart-cost)"
                 strokeWidth={2}
-                dot={false}
+                fill="none"
+                strokeDasharray="4 3"
                 activeDot={{ r: 5, fill: 'var(--chart-cost)', stroke: 'var(--navy-900)', strokeWidth: 2 }}
               />
-              <Line
+              <Area
                 type="monotone"
                 dataKey="utilidad"
                 name="Utilidad"
                 stroke="var(--chart-profit)"
-                strokeWidth={2.5}
-                dot={false}
-                activeDot={{ r: 5, fill: 'var(--chart-profit)', stroke: 'var(--navy-900)', strokeWidth: 2 }}
+                strokeWidth={2.75}
+                fill="url(#gProfit)"
+                activeDot={{ r: 6, fill: 'var(--chart-profit)', stroke: 'var(--navy-900)', strokeWidth: 2 }}
               />
-            </LineChart>
+            </AreaChart>
           </ResponsiveContainer>
         </div>
 
-        <div style={{ display: 'flex', gap: 18, marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 20, marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)', flexWrap: 'wrap' }}>
           <LegendKey color="var(--chart-revenue)" label="Ingresos" />
-          <LegendKey color="var(--chart-cost)" label="Costos" />
+          <LegendKey color="var(--chart-cost)" label="Costos" dashed />
           <LegendKey color="var(--chart-profit)" label="Utilidad" />
         </div>
       </div>
 
-      <SectionTitle>Por módulo</SectionTitle>
-      <div className="grid-3" style={{ marginBottom: 8 }}>
-        <ModuleCard title="Transferencias" data={moduleCards.transferencia} extraLabel="Comisión promedio" extraValue={fmtPercent(moduleCards.transferencia.avgMargin)} />
-        <ModuleCard title="Cripto" data={moduleCards.cripto} extraLabel="Margen promedio" extraValue={fmtPercent(moduleCards.cripto.avgMargin)} />
-        <ModuleCard title="Efectivo" data={moduleCards.efectivo} extraLabel="Margen promedio" extraValue={fmtPercent(moduleCards.efectivo.avgMargin)} />
+      <div className="dash-split">
+        <div>
+          <SectionTitle>Por módulo · este mes</SectionTitle>
+          <div className="grid-3">
+            <ModuleCard
+              title="Transferencias"
+              data={moduleCards.transferencia}
+              extraLabel="Comisión promedio"
+              extraValue={fmtPercent(moduleCards.transferencia.avgMargin)}
+              barMax={maxModuleProfit}
+            />
+            <ModuleCard
+              title="Cripto"
+              data={moduleCards.cripto}
+              extraLabel="Margen promedio"
+              extraValue={fmtPercent(moduleCards.cripto.avgMargin)}
+              barMax={maxModuleProfit}
+            />
+            <ModuleCard
+              title="Efectivo"
+              data={moduleCards.efectivo}
+              extraLabel="Margen promedio"
+              extraValue={fmtPercent(moduleCards.efectivo.avgMargin)}
+              barMax={maxModuleProfit}
+            />
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gap: 18 }}>
+          <div className="card">
+            <SectionTitle>Tipos de cambio</SectionTitle>
+            {activeRates.length === 0 && <div style={{ color: 'var(--text-mute)', fontSize: 13 }}>Sin tipos de cambio cargados.</div>}
+            {activeRates.map((r: any) => (
+              <div key={r.id} className="rate-row">
+                <span className="rate-pair">{r.pair}</span>
+                <span className="rate-nums">
+                  <s>C {fmtNumber(r.buy_rate, 4)}</s> &nbsp; <b>V {fmtNumber(r.sell_rate, 4)}</b>
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="card">
+            <SectionTitle>Top operadores · mes</SectionTitle>
+            {leaderboard.length === 0 && <div style={{ color: 'var(--text-mute)', fontSize: 13 }}>Sin operaciones este mes.</div>}
+            {leaderboard.map((o, i) => (
+              <div key={o.name} className="lead-row">
+                <span className="lead-rank">{i + 1}</span>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13.5, fontWeight: 500 }}>
+                  {o.name}
+                </span>
+                <span style={{ fontSize: 12, color: 'var(--text-mute)' }}>{fmtNumber(o.operations, 0)} ops</span>
+                <span className={`mono ${o.profit >= 0 ? 'pos' : 'neg'}`} style={{ fontSize: 13, fontWeight: 700, minWidth: 92, textAlign: 'right' }}>
+                  {fmtMoney(o.profit)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {loading && <div style={{ color: 'var(--text-mute)', marginTop: 12 }}>Cargando…</div>}
@@ -217,17 +368,42 @@ export function DashboardPage() {
   );
 }
 
-function SectionTitle({ children }: { children: string }) {
+function LiveClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
   return (
-    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '4px 0 12px' }}>
-      {children}
+    <div className="dash-clock" style={{ textAlign: 'right' }}>
+      {now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+      <br />
+      <small>{now.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}</small>
     </div>
   );
 }
 
-function Grid({ children }: { children: ReactNode }) {
+function FullscreenButton() {
+  const [fs, setFs] = useState(false);
+  useEffect(() => {
+    const onChange = () => setFs(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+  function toggle() {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else document.documentElement.requestFullscreen().catch(() => {});
+  }
   return (
-    <div className="grid-4" style={{ marginBottom: 28 }}>
+    <button className="dash-fullscreen-btn" onClick={toggle} title="Modo pantalla">
+      {fs ? '✕ Salir' : '⛶ Pantalla'}
+    </button>
+  );
+}
+
+function SectionTitle({ children }: { children: string }) {
+  return (
+    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 12px' }}>
       {children}
     </div>
   );
@@ -238,15 +414,21 @@ function ModuleCard({
   data,
   extraLabel,
   extraValue,
+  barMax,
 }: {
   title: string;
   data: { operations: number; revenue: number; profit: number };
   extraLabel: string;
   extraValue: string;
+  barMax: number;
 }) {
+  const pct = Math.max(0, Math.min(100, (data.profit / barMax) * 100));
   return (
     <div className="card">
-      <h3 style={{ fontSize: 14.5, marginBottom: 14 }}>{title}</h3>
+      <h3 style={{ fontSize: 15, marginBottom: 14 }}>{title}</h3>
+      <div className={`util-bar ${data.profit < 0 ? 'neg' : ''}`} style={{ marginBottom: 14 }}>
+        <span style={{ width: `${pct}%` }} />
+      </div>
       <Row label="Operaciones" value={fmtNumber(data.operations, 0)} />
       <Row label="Volumen" value={fmtMoney(data.revenue)} />
       <Row label="Utilidad" value={fmtMoney(data.profit)} tone={data.profit >= 0 ? 'pos' : 'neg'} />
@@ -307,17 +489,24 @@ function ChartStat({ dot, label, value, tone }: { dot: string; label: string; va
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, display: 'inline-block' }} />
         {label}
       </div>
-      <div className={`mono ${tone === 'pos' ? 'pos' : tone === 'neg' ? 'neg' : ''}`} style={{ fontSize: 19, fontWeight: 700 }}>
+      <div className={`mono ${tone === 'pos' ? 'pos' : tone === 'neg' ? 'neg' : ''}`} style={{ fontSize: 20, fontWeight: 700 }}>
         {value}
       </div>
     </div>
   );
 }
 
-function LegendKey({ color, label }: { color: string; label: string }) {
+function LegendKey({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: 'var(--text-dim)' }}>
-      <span style={{ width: 12, height: 2, background: color, display: 'inline-block', borderRadius: 1 }} />
+      <span
+        style={{
+          width: 14,
+          height: 0,
+          borderTop: `2px ${dashed ? 'dashed' : 'solid'} ${color}`,
+          display: 'inline-block',
+        }}
+      />
       {label}
     </span>
   );

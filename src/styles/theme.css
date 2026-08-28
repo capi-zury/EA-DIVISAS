@@ -224,6 +224,171 @@ td.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text
   color: var(--text-dim);
 }
 
+/* ---------- Dashboard / modo pantalla ---------- */
+/* El Resumen se muestra en una pantalla de pared: tipografía más grande,
+   jerarquía fuerte, y un indicador de "en vivo" con auto-refresco. */
+
+@keyframes live-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.3; transform: scale(0.82); } }
+
+.live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 12px var(--green-glow);
+  animation: live-pulse 2.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.dash-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dash-title {
+  font-size: clamp(20px, 2.2vw, 30px);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.dash-title span { color: var(--electric-bright); }
+
+.dash-clock {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(15px, 1.4vw, 20px);
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+.dash-clock small { color: var(--text-mute); text-transform: capitalize; font-size: 0.7em; letter-spacing: 0.04em; }
+
+.dash-hero-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 18px; margin-bottom: 18px; }
+.dash-split { display: grid; grid-template-columns: 2fr 1fr; gap: 18px; align-items: start; }
+
+@media (max-width: 1000px) {
+  .dash-hero-grid { grid-template-columns: 1fr; }
+  .dash-split { grid-template-columns: 1fr; }
+}
+
+.hero-card {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(700px 240px at 100% 0%, rgba(47, 116, 255, 0.12), transparent 70%),
+    linear-gradient(180deg, var(--surface-raised), var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: clamp(20px, 2.4vw, 32px);
+}
+.hero-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--electric), transparent 80%);
+}
+.hero-card.accent-green::before { background: linear-gradient(180deg, var(--green), transparent 80%); }
+
+.hero-label {
+  font-size: clamp(11px, 1vw, 13px);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.hero-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-size: clamp(30px, 4.6vw, 62px);
+  line-height: 1.02;
+}
+.hero-value.sm { font-size: clamp(24px, 3vw, 40px); }
+.hero-sub { margin-top: 12px; font-size: clamp(12px, 1vw, 14px); color: var(--text-mute); }
+
+.delta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+.delta-chip.up { background: var(--green-dim); color: var(--green); }
+.delta-chip.down { background: var(--red-dim); color: var(--red); }
+.delta-chip.flat { background: var(--navy-700); color: var(--text-dim); }
+
+.util-bar { height: 6px; border-radius: 999px; background: var(--navy-700); overflow: hidden; margin-top: 4px; }
+.util-bar > span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--electric), var(--electric-bright)); transition: width 500ms ease; }
+.util-bar.neg > span { background: linear-gradient(90deg, var(--red), #ff849a); }
+
+.rate-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+}
+.rate-row:last-child { border-bottom: none; }
+.rate-pair { font-weight: 700; font-size: 14px; letter-spacing: 0.02em; }
+.rate-nums { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 13.5px; }
+.rate-nums b { color: var(--text); font-weight: 600; }
+.rate-nums s { color: var(--text-mute); text-decoration: none; }
+
+.lead-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.lead-row:last-child { border-bottom: none; }
+.lead-rank {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--navy-700);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.lead-row:first-child .lead-rank { background: var(--electric-dim); color: var(--electric-bright); }
+
+.dash-fullscreen-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--navy-800);
+  color: var(--text-dim);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dash-fullscreen-btn:hover { border-color: var(--electric); color: var(--text); }
+
+/* Al entrar en pantalla completa desde el navegador, esconde la barra
+   lateral para que el tablero ocupe todo el ancho. */
+:fullscreen .sidebar { display: none; }
+:fullscreen .app-main { max-width: none !important; padding: 26px 34px !important; }
+
 /* ---------- Responsive: grids compartidos ---------- */
 /* Usar estas clases en vez de gridTemplateColumns inline — así el
    colapso a 1 columna en pantallas chicas queda en un solo lugar. */
