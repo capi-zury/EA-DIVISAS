@@ -53,3 +53,31 @@ drop trigger if exists on_auth_user_email_changed on auth.users;
 create trigger on_auth_user_email_changed
   after update of email on auth.users
   for each row execute function divisas.handle_user_email_change();
+
+-- 5. Auditar los cambios en `profiles`.
+--
+-- Hasta ahora `profiles` era la única tabla de negocio SIN trigger de
+-- auditoría: subir/bajar el rol de un usuario o activar/desactivarlo no
+-- dejaba rastro en `audit_logs`. Para un sistema que tiene un rol
+-- "auditor" dedicado eso es un hueco. Se crea DESPUÉS del backfill de
+-- arriba a propósito, para no generar una fila de auditoría por cada
+-- perfil existente al aplicar esta migración.
+drop trigger if exists profiles_audit on divisas.profiles;
+create trigger profiles_audit
+  after insert or update or delete on divisas.profiles
+  for each row execute function divisas.audit_row_change();
+
+-- 6. Endurecer la lectura de `profiles`.
+--
+-- La política anterior (`using (true)`) dejaba que CUALQUIER usuario
+-- autenticado leyera la tabla entera vía la API — nombres, roles y ahora
+-- también correos de todos. La app solo necesita que:
+--   - cada quien lea su propio perfil (lo hace el AuthContext al entrar), y
+--   - un super_admin lea todos (pantalla "Usuarios").
+-- Las vistas de dashboard que muestran el nombre del operador
+-- (v_operator_totals) no se ven afectadas: corren como su dueño, no pasan
+-- por esta política.
+drop policy if exists profiles_select on divisas.profiles;
+create policy profiles_select on divisas.profiles
+  for select to authenticated
+  using (id = (select auth.uid()) or divisas.has_role('super_admin'));

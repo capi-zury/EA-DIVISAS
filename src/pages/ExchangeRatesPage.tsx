@@ -3,7 +3,7 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { Hint } from '../components/ui/Hint';
 import { useAuth } from '../lib/auth/AuthContext';
 import { useExchangeRateHistory, useExchangeRates, useUpsertExchangeRate } from '../lib/api/hooks';
-import { fmtDateTime, fmtNumber } from '../lib/format';
+import { fmtDateTime, fmtNumber, parseAmountInput } from '../lib/format';
 
 export function ExchangeRatesPage() {
   const { profile } = useAuth();
@@ -14,12 +14,20 @@ export function ExchangeRatesPage() {
   const { data: history } = useExchangeRateHistory(selectedPair);
 
   const [form, setForm] = useState({ pair: '', kind: 'fiat' as 'fiat' | 'cripto', buy_rate: '', sell_rate: '' });
+  const [formError, setFormError] = useState<string | null>(null);
   const set = (k: keyof typeof form) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    const buy = parseAmountInput(form.buy_rate);
+    const sell = parseAmountInput(form.sell_rate);
+    if (buy === null || sell === null || buy <= 0 || sell <= 0) {
+      setFormError('Los precios de compra y venta deben ser números mayores a cero.');
+      return;
+    }
+    setFormError(null);
     upsert(
-      { pair: form.pair.toUpperCase(), kind: form.kind, buy_rate: Number(form.buy_rate), sell_rate: Number(form.sell_rate) },
+      { pair: form.pair.toUpperCase(), kind: form.kind, buy_rate: buy, sell_rate: sell },
       { onSuccess: () => setForm({ pair: '', kind: 'fiat', buy_rate: '', sell_rate: '' }) }
     );
   }
@@ -81,13 +89,15 @@ export function ExchangeRatesPage() {
               </div>
               <div className="field">
                 <label>Precio al que compras</label>
-                <input required type="number" step="any" value={form.buy_rate} onChange={set('buy_rate')} />
+                <input required inputMode="decimal" value={form.buy_rate} onChange={set('buy_rate')} />
               </div>
               <div className="field">
                 <label>Precio al que vendes</label>
-                <input required type="number" step="any" value={form.sell_rate} onChange={set('sell_rate')} />
+                <input required inputMode="decimal" value={form.sell_rate} onChange={set('sell_rate')} />
               </div>
-              {error && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>{(error as Error).message}</div>}
+              {(formError || error) && (
+                <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>{formError ?? (error as Error).message}</div>
+              )}
               <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} disabled={isPending}>
                 {isPending ? 'Guardando…' : 'Guardar'}
               </button>

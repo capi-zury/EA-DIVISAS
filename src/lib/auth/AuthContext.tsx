@@ -45,20 +45,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!session?.user) return;
+    const userId = session?.user?.id;
+    if (!userId) return;
     let cancelled = false;
     setLoading(true);
-    supabase
-      .from('profiles')
-      .select('id, full_name, role, active')
-      .eq('id', session.user.id)
-      .single()
-      .then(({ data }) => {
-        if (!cancelled) {
+
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, full_name, role, active')
+          .eq('id', userId)
+          .single();
+        if (cancelled) return;
+        if (error) {
+          // Un perfil ausente (PGRST116) es un caso legítimo: usuario de
+          // auth sin fila en profiles → se trata como "sin perfil".
+          // Cualquier otro error (red, permisos) NO debe dejar la app
+          // colgada en "Cargando…" — se registra y se sale del loading.
+          if (error.code !== 'PGRST116') console.error('No se pudo cargar el perfil:', error);
+          setProfile(null);
+        } else {
           setProfile((data as Profile) ?? null);
-          setLoading(false);
         }
-      });
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Fallo inesperado al cargar el perfil:', err);
+          setProfile(null);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
     return () => {
       cancelled = true;
     };
