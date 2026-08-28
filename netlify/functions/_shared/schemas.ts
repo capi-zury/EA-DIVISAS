@@ -83,3 +83,16 @@ export const createOperationRequestSchema = z.discriminatedUnion('module', [
 ]);
 
 export type CreateOperationRequest = z.infer<typeof createOperationRequestSchema>;
+
+// ---------- Alta de usuarios (Netlify Function admin-users) ----------
+
+export const userRoleSchema = z.enum(['super_admin', 'admin', 'operador', 'auditor']);
+
+export const createUserRequestSchema = z.object({
+  full_name: z.string().trim().min(2, 'El nombre es obligatorio.').max(120),
+  email: z.string().trim().toLowerCase().email('Correo inválido.'),
+  password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres.').max(72),
+  role: userRoleSchema,
+});
+
+export type CreateUserRequest = z.infer<typeof createUserRequestSchema>;

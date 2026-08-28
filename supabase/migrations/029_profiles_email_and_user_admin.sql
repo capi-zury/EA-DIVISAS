@@ -1,0 +1,55 @@
+-- 029: correo del usuario visible en `profiles` + sincronización con auth.users.
+--
+-- Contexto: la pantalla "Usuarios" solo mostraba `full_name`, y cuando un
+-- usuario se crea sin metadata ese nombre termina siendo el propio correo,
+-- así que no había forma clara de saber "qué usuario es quién". El correo
+-- real vive en `auth.users`, que la API REST no expone al navegador. La
+-- solución es replicar el correo en `divisas.profiles` (que sí es
+-- consultable con RLS) y mantenerlo sincronizado con triggers.
+
+-- 1. Columna nueva (nullable: el trigger la llena en altas; el backfill la
+--    llena para los usuarios que ya existían).
+alter table divisas.profiles add column if not exists email text;
+
+comment on column divisas.profiles.email is 'Espejo de auth.users.email — se mantiene sincronizado por los triggers on_auth_user_created / on_auth_user_email_changed. No editar a mano.';
+
+-- 2. Backfill de los perfiles existentes.
+update divisas.profiles p
+set email = u.email
+from auth.users u
+where u.id = p.id
+  and p.email is distinct from u.email;
+
+-- 3. El trigger de alta ahora también guarda el correo.
+create or replace function divisas.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into divisas.profiles (id, full_name, email, role)
+  values (new.id, coalesce(new.raw_user_meta_data->>'full_name', new.email), new.email, 'operador');
+  return new;
+end;
+$$;
+
+-- 4. Si el correo cambia en auth.users, se refleja en el perfil.
+create or replace function divisas.handle_user_email_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.email is distinct from old.email then
+    update divisas.profiles set email = new.email, updated_at = now() where id = new.id;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_email_changed on auth.users;
+create trigger on_auth_user_email_changed
+  after update of email on auth.users
+  for each row execute function divisas.handle_user_email_change();

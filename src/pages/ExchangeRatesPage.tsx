@@ -9,7 +9,7 @@ export function ExchangeRatesPage() {
   const { profile } = useAuth();
   const canEdit = profile?.role === 'super_admin' || profile?.role === 'admin';
   const { data: rates, isLoading } = useExchangeRates();
-  const { mutate: upsert, isPending } = useUpsertExchangeRate();
+  const { mutate: upsert, isPending, error } = useUpsertExchangeRate();
   const [selectedPair, setSelectedPair] = useState<string | null>(null);
   const { data: history } = useExchangeRateHistory(selectedPair);
 
@@ -87,6 +87,7 @@ export function ExchangeRatesPage() {
                 <label>Precio al que vendes</label>
                 <input required type="number" step="any" value={form.sell_rate} onChange={set('sell_rate')} />
               </div>
+              {error && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>{(error as Error).message}</div>}
               <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} disabled={isPending}>
                 {isPending ? 'Guardando…' : 'Guardar'}
               </button>
