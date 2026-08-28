@@ -79,10 +79,10 @@ En Netlify, las variables ya están configuradas (`netlify env:list` para verlas
 
 Supabase Auth (email + password). El primer usuario (`super_admin`) ya existe:
 
-- **Usuario**: `i55969072@gmail.com`
+- **Usuario**: `zkassin@estructuraagil.com`
 - Cámbiale la contraseña desde el dashboard de Supabase (Authentication → Users) o agrega un flujo de "cambiar contraseña" en la app.
 
-Nuevos usuarios se crean con `role = 'operador'` por defecto (trigger `divisas.handle_new_user`); un `super_admin` sube el rol desde **Usuarios** en la app.
+Usuarios nuevos: un `super_admin` los da de alta directamente desde **Usuarios → "Nuevo usuario"** en la app (correo, contraseña y rol, incluido `super_admin`). Detrás corre la Netlify Function `admin-users` con la service role key. Si en cambio alguien se registra por fuera (dashboard de Supabase), el trigger `divisas.handle_new_user` le crea el perfil con `role = 'operador'` y un `super_admin` lo sube.
 
 ## Cálculos
 
@@ -109,7 +109,7 @@ Para probar las Netlify Functions localmente (con las variables de servidor): `n
 
 ## Despliegue
 
-Ya desplegado en Netlify (`ea-divisas-operations`, cuenta Ziata). Redeploy:
+Ya desplegado en Netlify (`ea-divisas-operations`). Redeploy:
 
 ```bash
 npx netlify-cli deploy --prod --build
