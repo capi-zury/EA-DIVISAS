@@ -413,6 +413,15 @@ export function useProfiles() {
   });
 }
 
+export function useCreateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { full_name: string; email: string; password: string; role: string }) =>
+      callFunction<{ user: { id: string; full_name: string; email: string; role: string; active: boolean } }>('admin-users', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['profiles'] }),
+  });
+}
+
 export function useUpdateProfileRole() {
   const qc = useQueryClient();
   return useMutation({

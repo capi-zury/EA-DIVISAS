@@ -53,3 +53,28 @@ export function toLocalDateString(d: Date): string {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
+
+/**
+ * Convierte lo que el usuario escribió en un campo de monto a número.
+ * Acepta coma decimal ("17,85"), separadores de miles ("1.234,56" o
+ * "1,234.56") y espacios. Devuelve `null` si no es un número válido —
+ * el llamador debe tratar `null` como error, nunca como 0 (guardar un 0
+ * silencioso por un typo es justo el bug que esto evita).
+ */
+export function parseAmountInput(raw: string): number | null {
+  const s = raw.trim();
+  if (!s) return null;
+  let normalized = s.replace(/\s/g, '');
+  const hasComma = normalized.includes(',');
+  const hasDot = normalized.includes('.');
+  if (hasComma && hasDot) {
+    // El último separador que aparece es el decimal; el otro es de miles.
+    normalized = normalized.lastIndexOf(',') > normalized.lastIndexOf('.')
+      ? normalized.replace(/\./g, '').replace(',', '.')
+      : normalized.replace(/,/g, '');
+  } else if (hasComma) {
+    normalized = normalized.replace(',', '.');
+  }
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : null;
+}
