@@ -291,14 +291,40 @@ export interface NormalizedTransferRow {
 
 export type RawRow = Record<string, unknown>;
 
-/** Empareja los encabezados reales del archivo con los de la tabla del equipo. */
+/**
+ * Empareja los encabezados reales del archivo con los de la tabla del equipo.
+ * Primero por coincidencia exacta (normalizada: mayúsculas, sin acentos,
+ * espacios colapsados); luego, para lo que quede suelto, por contención
+ * cuando los textos son casi iguales ("FECHA DE OPERACION" → fecha).
+ */
 export function autoDetectMapping(headers: string[]): ColumnMapping {
-  const byKey = new Map(headers.map((h) => [normalizeKey(h), h]));
+  const norm = headers.map((h) => ({ raw: h, key: normalizeKey(h) }));
   const mapping: ColumnMapping = {};
+
   for (const field of IMPORT_FIELDS) {
-    const hit = byKey.get(normalizeKey(TEAM_SHEET_HEADERS[field]));
-    if (hit) mapping[field] = hit;
+    const want = normalizeKey(TEAM_SHEET_HEADERS[field]);
+    const hit = norm.find((h) => h.key === want);
+    if (hit) mapping[field] = hit.raw;
   }
+
+  const used = new Set(Object.values(mapping));
+  for (const field of IMPORT_FIELDS) {
+    if (mapping[field]) continue;
+    const want = normalizeKey(TEAM_SHEET_HEADERS[field]);
+    if (want.length < 4) continue;
+    const hit = norm.find(
+      (h) =>
+        !used.has(h.raw) &&
+        h.key.length >= 4 &&
+        Math.abs(h.key.length - want.length) <= 6 &&
+        (h.key.includes(want) || want.includes(h.key)),
+    );
+    if (hit) {
+      mapping[field] = hit.raw;
+      used.add(hit.raw);
+    }
+  }
+
   return mapping;
 }
 

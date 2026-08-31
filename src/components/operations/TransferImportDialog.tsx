@@ -4,6 +4,7 @@ import {
   IMPORT_FIELDS,
   IMPORT_FIELD_LABELS,
   REQUIRED_IMPORT_FIELDS,
+  TEAM_SHEET_HEADERS,
   autoDetectMapping,
   normalizeKey,
   type ColumnMapping,
@@ -12,9 +13,11 @@ import {
 
 const MAPPING_STORAGE_KEY = 'ea-divisas:transfer-import-mapping';
 const CHUNK_SIZE = 200;
+const PREVIEW_LIMIT = 1000;
 
 type Step = 'upload' | 'map' | 'preview' | 'done';
 type RawRow = Record<string, unknown>;
+type Sheet = { name: string; aoa: unknown[][] };
 
 function loadSavedMapping(): ColumnMapping {
   try {
@@ -25,11 +28,63 @@ function loadSavedMapping(): ColumnMapping {
   }
 }
 
+/** Nombres de columna alineados por índice; los vacíos y repetidos se etiquetan para no romper el mapeo. */
+function buildHeaders(headerRow: unknown[] | undefined): string[] {
+  const seen = new Map<string, number>();
+  return (headerRow ?? []).map((h, i) => {
+    let name = String(h ?? '').trim();
+    if (!name) name = `Columna ${i + 1}`;
+    const n = (seen.get(name) ?? 0) + 1;
+    seen.set(name, n);
+    return n > 1 ? `${name} (${n})` : name;
+  });
+}
+
+/** Adivina en qué fila están los encabezados (los archivos reales traen títulos/logos arriba). */
+function detectHeaderRow(aoa: unknown[][]): number {
+  const known = new Set(Object.values(TEAM_SHEET_HEADERS).map(normalizeKey));
+  const scan = Math.min(aoa.length, 15);
+  let best = 0;
+  let bestScore = -1;
+  for (let i = 0; i < scan; i++) {
+    const cells = (aoa[i] ?? []).map((c) => normalizeKey(c)).filter(Boolean);
+    const score = cells.filter((c) => known.has(c)).length;
+    if (score > bestScore) {
+      bestScore = score;
+      best = i;
+    }
+  }
+  if (bestScore >= 3) return best;
+  for (let i = 0; i < scan; i++) {
+    const nonEmpty = (aoa[i] ?? []).filter((c) => String(c ?? '').trim()).length;
+    if (nonEmpty >= 3) return i;
+  }
+  return 0;
+}
+
+function aoaToRows(aoa: unknown[][], headerRow: number): RawRow[] {
+  const hdrs = buildHeaders(aoa[headerRow]);
+  const out: RawRow[] = [];
+  for (let i = headerRow + 1; i < aoa.length; i++) {
+    const row = aoa[i] ?? [];
+    const obj: RawRow = {};
+    let any = false;
+    hdrs.forEach((h, c) => {
+      const v = row[c];
+      obj[h] = v ?? '';
+      if (String(v ?? '').trim()) any = true;
+    });
+    if (any) out.push(obj);
+  }
+  return out;
+}
+
 export function TransferImportDialog({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<Step>('upload');
   const [fileName, setFileName] = useState<string | null>(null);
-  const [headers, setHeaders] = useState<string[]>([]);
-  const [rows, setRows] = useState<RawRow[]>([]);
+  const [sheets, setSheets] = useState<Sheet[]>([]);
+  const [sheetName, setSheetName] = useState('');
+  const [headerRow, setHeaderRow] = useState(0);
   const [parseError, setParseError] = useState<string | null>(null);
 
   const [mapping, setMapping] = useState<ColumnMapping>({});
@@ -44,6 +99,15 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const { mutateAsync: runImport, isPending, error } = useImportOperations();
 
+  const activeAoa = useMemo(() => sheets.find((s) => s.name === sheetName)?.aoa ?? [], [sheets, sheetName]);
+  const headers = useMemo(() => buildHeaders(activeAoa[headerRow]), [activeAoa, headerRow]);
+  const rows = useMemo(() => aoaToRows(activeAoa, headerRow), [activeAoa, headerRow]);
+
+  /** (Re)detecta el mapeo para un juego de encabezados dado; respeta el preset guardado. */
+  function redetectMapping(hdrs: string[]) {
+    setMapping(hdrs.length ? { ...autoDetectMapping(hdrs), ...pickValid(loadSavedMapping(), hdrs) } : {});
+  }
+
   async function handleFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -52,31 +116,53 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
       const XLSX = await import('xlsx');
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { cellDates: true });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json<RawRow>(ws, { defval: '', raw: false });
-      if (!json.length) {
-        setParseError('El archivo no tiene filas de datos.');
+      const parsed: Sheet[] = wb.SheetNames.map((name) => ({
+        name,
+        aoa: XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name], { header: 1, raw: false, defval: '', blankrows: false }),
+      })).filter((s) => s.aoa.length > 0);
+
+      if (!parsed.length) {
+        setParseError('El archivo no tiene datos en ninguna hoja.');
         return;
       }
-      const hdrs = Object.keys(json[0]);
+      const first = parsed[0];
+      const hr = detectHeaderRow(first.aoa);
       setFileName(file.name);
-      setHeaders(hdrs);
-      setRows(json);
-      setMapping({ ...autoDetectMapping(hdrs), ...pickValid(loadSavedMapping(), hdrs) });
+      setSheets(parsed);
+      setSheetName(first.name);
+      setHeaderRow(hr);
+      redetectMapping(buildHeaders(first.aoa[hr]));
       setStep('map');
     } catch (err) {
       setParseError(err instanceof Error ? err.message : 'No se pudo leer el archivo.');
     }
   }
 
+  function changeSheet(name: string) {
+    const s = sheets.find((x) => x.name === name);
+    setSheetName(name);
+    if (s) {
+      const hr = detectHeaderRow(s.aoa);
+      setHeaderRow(hr);
+      redetectMapping(buildHeaders(s.aoa[hr]));
+    }
+  }
+
+  function changeHeaderRow(oneBased: number) {
+    const hr = Math.max(0, Math.min(activeAoa.length - 1, oneBased - 1));
+    setHeaderRow(hr);
+    redetectMapping(buildHeaders(activeAoa[hr]));
+  }
+
   const mappedMonto = !!mapping.montoUsd;
+  const mappedCount = Object.values(mapping).filter(Boolean).length;
 
   async function goPreview() {
     const res = await runImport({
       source: 'excel',
       fileName,
       mapping: mapping as Record<string, string>,
-      rows: rows.slice(0, 1000),
+      rows: rows.slice(0, PREVIEW_LIMIT),
       dryRun: true,
       countryOrigin,
       countryDestination,
@@ -86,7 +172,11 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
   }
 
   async function runReal() {
-    try { localStorage.setItem(MAPPING_STORAGE_KEY, JSON.stringify(mapping)); } catch { /* almacenamiento no disponible */ }
+    try {
+      localStorage.setItem(MAPPING_STORAGE_KEY, JSON.stringify(mapping));
+    } catch {
+      /* almacenamiento no disponible */
+    }
     const all: ImportRowResult[] = [];
     let batchId: string | undefined;
     const totals = { total: 0, created: 0, skipped: 0, errors: 0, ready: 0, newClients: 0 };
@@ -136,6 +226,8 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
     URL.revokeObjectURL(url);
   }
 
+  const headerPreview = (activeAoa[headerRow] ?? []).map((c) => String(c ?? '').trim()).filter(Boolean).slice(0, 8).join(' · ');
+
   return (
     <div>
       <Stepper step={step} />
@@ -143,8 +235,9 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
       {step === 'upload' && (
         <div>
           <p style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 14 }}>
-            Sube un archivo <strong>Excel (.xlsx)</strong> o <strong>CSV</strong> con tus transferencias. La primera fila debe ser
-            el encabezado de columnas. El sistema solo lee el archivo — no lo modifica.
+            Sube un archivo <strong>Excel (.xlsx)</strong> o <strong>CSV</strong> con tus transferencias. Puede tener varias hojas
+            y filas de título arriba de los encabezados — en el siguiente paso eliges cuál es cuál. El sistema solo lee el
+            archivo, no lo modifica.
           </p>
           <input ref={fileInput} type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} style={{ display: 'none' }} />
           <button className="btn btn-primary" onClick={() => fileInput.current?.click()}>
@@ -157,10 +250,39 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
       {step === 'map' && (
         <div>
           <div style={{ fontSize: 12.5, color: 'var(--text-mute)', marginBottom: 12 }}>
-            <strong>{fileName}</strong> · {rows.length} fila{rows.length === 1 ? '' : 's'} · {headers.length} columnas
+            <strong>{fileName}</strong>
           </div>
+
+          <div className="grid-2" style={{ gap: '8px 16px', marginBottom: 4 }}>
+            <div className="field">
+              <label>Hoja</label>
+              <select value={sheetName} onChange={(e) => changeSheet(e.target.value)}>
+                {sheets.map((s) => (
+                  <option key={s.name} value={s.name}>
+                    {s.name.trim()} ({Math.max(0, s.aoa.length - 1)} filas)
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>Fila de los encabezados</label>
+              <input
+                type="number"
+                min={1}
+                max={activeAoa.length}
+                value={headerRow + 1}
+                onChange={(e) => changeHeaderRow(Number(e.target.value))}
+              />
+            </div>
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-mute)', marginBottom: 12 }}>
+            Encabezados detectados: <span style={{ color: 'var(--text-dim)' }}>{headerPreview || '(fila vacía)'}</span>
+            {' · '}
+            {rows.length} fila{rows.length === 1 ? '' : 's'} de datos · {mappedCount}/{IMPORT_FIELDS.length} campos mapeados
+          </div>
+
           <p style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 12 }}>
-            Indica qué columna de tu archivo corresponde a cada campo. Lo que se detectó automáticamente ya está puesto.
+            Confirma qué columna corresponde a cada campo. Lo detectado ya está puesto; el mapeo se guarda para la próxima vez.
           </p>
 
           <div className="grid-2" style={{ gap: '8px 16px' }}>
@@ -203,7 +325,7 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
 
           {!mappedMonto && (
             <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 10 }}>
-              Falta mapear <strong>Monto USD</strong> — es obligatorio.
+              Falta mapear <strong>Monto USD</strong> — es obligatorio. Revisa la hoja y la fila de encabezados.
             </div>
           )}
           {error && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 10 }}>{(error as Error).message}</div>}
@@ -212,7 +334,7 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
             <button className="btn btn-ghost" onClick={() => setStep('upload')}>
               Atrás
             </button>
-            <button className="btn btn-primary" onClick={goPreview} disabled={!mappedMonto || isPending}>
+            <button className="btn btn-primary" onClick={goPreview} disabled={!mappedMonto || !rows.length || isPending}>
               {isPending ? 'Revisando…' : 'Ver vista previa'}
             </button>
           </div>
@@ -227,9 +349,9 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
             <Tile label="Con error" value={preview.summary.errors} tone={preview.summary.errors ? 'neg' : undefined} />
             <Tile label="Clientes nuevos a crear" value={preview.summary.newClients} />
           </div>
-          {rows.length > 1000 && (
+          {rows.length > PREVIEW_LIMIT && (
             <div style={{ fontSize: 12, color: 'var(--text-mute)', marginBottom: 10 }}>
-              Vista previa de las primeras 1000 filas. Al importar se procesan las {rows.length}.
+              Vista previa de las primeras {PREVIEW_LIMIT} filas. Al importar se procesan las {rows.length}.
             </div>
           )}
 
@@ -294,7 +416,7 @@ function csv(v: string): string {
 function Stepper({ step }: { step: Step }) {
   const steps: { key: Step; label: string }[] = [
     { key: 'upload', label: '1. Archivo' },
-    { key: 'map', label: '2. Columnas' },
+    { key: 'map', label: '2. Hoja y columnas' },
     { key: 'preview', label: '3. Vista previa' },
     { key: 'done', label: '4. Resultado' },
   ];
