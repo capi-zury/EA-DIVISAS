@@ -86,8 +86,11 @@ for (let i = 2; i < aoa.length; i++) {
   });
 }
 
+// incluye el número de renglón: en esta hoja cada fila es una operación
+// distinta aunque tenga los mismos valores. Re-importar el mismo archivo
+// sigue siendo idempotente (mismas filas → mismas llaves).
 const keyOf = (o: Op) =>
-  `h:efe|${normalizeKey(o.client ?? '')}|${Math.round(o.monto * 100)}|${o.date}|${Math.round(o.comGan * 100)}`;
+  `h:efe|r${o.row}|${normalizeKey(o.client ?? '')}|${Math.round(o.monto * 100)}|${o.date}|${Math.round(o.comGan * 100)}`;
 
 // ---------- clientes existentes ----------
 const { data: existingClients } = await db.from('clients').select('id, name');
