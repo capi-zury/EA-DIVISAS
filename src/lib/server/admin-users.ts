@@ -13,48 +13,41 @@
  * El cambio de rol / activar-desactivar de un usuario que YA existe sigue
  * yendo directo por RLS (policy profiles_write_super_admin), no por aquí.
  */
-import { getCallerProfile, getCallingUser, supabaseAdmin } from './_shared/supabase-admin';
-import { createUserRequestSchema } from './_shared/schemas';
+import { getCallerProfile, getCallingUser, supabaseAdmin } from './supabase';
+import { createUserRequestSchema } from './schemas';
+import { created, fail, type ServerRequest, type ServerResponse } from './types';
 
-function json(statusCode: number, body: unknown) {
-  return { statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
-}
+export async function handleAdminUsers(req: ServerRequest): Promise<ServerResponse> {
+  if (req.method !== 'POST') return fail(405, 'Método no permitido.');
 
-export const handler = async (event: { httpMethod: string; body: string | null; headers: Record<string, string | undefined> }) => {
-  if (event.httpMethod !== 'POST') {
-    return json(405, { error: 'Método no permitido.' });
-  }
+  const user = await getCallingUser(req.authHeader, req.env);
+  if (!user) return fail(401, 'No autenticado.');
 
-  const user = await getCallingUser(event.headers.authorization || event.headers.Authorization);
-  if (!user) return json(401, { error: 'No autenticado.' });
-
-  const profile = await getCallerProfile(user.id);
-  if (!profile || !profile.active) return json(403, { error: 'Usuario inactivo o sin perfil.' });
-  if (profile.role !== 'super_admin') return json(403, { error: 'Solo un super_admin puede crear usuarios.' });
+  const profile = await getCallerProfile(user.id, req.env);
+  if (!profile || !profile.active) return fail(403, 'Usuario inactivo o sin perfil.');
+  if (profile.role !== 'super_admin') return fail(403, 'Solo un super_admin puede crear usuarios.');
 
   let payload;
   try {
-    payload = createUserRequestSchema.parse(JSON.parse(event.body || '{}'));
+    payload = createUserRequestSchema.parse(JSON.parse(req.rawBody || '{}'));
   } catch (err) {
-    return json(400, { error: 'Entrada inválida.', details: err instanceof Error ? err.message : String(err) });
+    return fail(400, 'Entrada inválida.', err instanceof Error ? err.message : String(err));
   }
 
-  const admin = supabaseAdmin();
+  const admin = supabaseAdmin(req.env);
 
-  const { data: created, error: createErr } = await admin.auth.admin.createUser({
+  const { data: createdUser, error: createErr } = await admin.auth.admin.createUser({
     email: payload.email,
     password: payload.password,
     email_confirm: true,
     user_metadata: { full_name: payload.full_name },
   });
 
-  if (createErr || !created?.user) {
+  if (createErr || !createdUser?.user) {
     const msg = createErr?.message || 'No se pudo crear el usuario.';
     // Supabase responde 422 cuando el correo ya está registrado.
     const alreadyExists = /already been registered|already registered|already exists/i.test(msg);
-    return json(alreadyExists ? 409 : 400, {
-      error: alreadyExists ? 'Ya existe un usuario con ese correo.' : msg,
-    });
+    return fail(alreadyExists ? 409 : 400, alreadyExists ? 'Ya existe un usuario con ese correo.' : msg);
   }
 
   // El trigger handle_new_user() ya insertó el perfil (rol 'operador').
@@ -62,7 +55,7 @@ export const handler = async (event: { httpMethod: string; body: string | null; 
   const { data: updatedProfile, error: profileErr } = await admin
     .from('profiles')
     .update({ role: payload.role, full_name: payload.full_name, updated_at: new Date().toISOString() })
-    .eq('id', created.user.id)
+    .eq('id', createdUser.user.id)
     .select('id, full_name, email, role, active, created_at')
     .single();
 
@@ -70,9 +63,9 @@ export const handler = async (event: { httpMethod: string; body: string | null; 
     // El usuario de auth quedó creado; revertimos para no dejar un usuario
     // a medias (sin perfil consistente) que además bloquearía reintentar
     // con el mismo correo.
-    await admin.auth.admin.deleteUser(created.user.id);
-    return json(500, { error: 'No se pudo asignar el rol al nuevo usuario.', details: profileErr.message });
+    await admin.auth.admin.deleteUser(createdUser.user.id);
+    return fail(500, 'No se pudo asignar el rol al nuevo usuario.', profileErr.message);
   }
 
-  return json(201, { user: updatedProfile });
-};
+  return created({ user: updatedProfile });
+}

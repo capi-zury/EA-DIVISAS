@@ -1,8 +1,9 @@
 /**
- * Validación de entrada para las Netlify Functions. Sanitiza/tipa lo que
- * llega del navegador antes de tocarlo — nunca se confía en un campo
- * "ya calculado" que venga del cliente; los montos financieros SIEMPRE se
- * recalculan aquí con el motor de cálculo, esto solo valida los insumos.
+ * Validación de entrada para los endpoints privilegiados (src/lib/server).
+ * Sanitiza/tipa lo que llega del navegador antes de tocarlo — nunca se
+ * confía en un campo "ya calculado" que venga del cliente; los montos
+ * financieros SIEMPRE se recalculan con el motor de cálculo, esto solo
+ * valida los insumos.
  */
 import { z } from 'zod';
 
@@ -76,6 +77,29 @@ export const cashInputSchema = z.object({
   providerCommissionPercent: money.optional(),
 });
 
+// ---------- Importación de transferencias (endpoint import-operations) ----------
+// Las filas llegan tal cual salieron del Excel/CSV o del Google Sheet — objetos
+// {encabezado: valor}. La normalización y validación real vive en
+// src/lib/import/transfer-import.ts (compartida con el frontend); esto solo
+// acota el sobre.
+
+export const importOperationsRequestSchema = z.object({
+  source: z.enum(['excel', 'google_sheet', 'drive_xlsx']),
+  /** Continúa una importación ya empezada (chunks). Si falta, se crea un lote nuevo. */
+  batchId: uuid.optional(),
+  fileName: z.string().max(300).optional().nullable(),
+  sheetId: z.string().max(200).optional().nullable(),
+  /** campo canónico → encabezado de columna. Si falta, se auto-detecta por los encabezados. */
+  mapping: z.record(z.string(), z.string()).optional(),
+  rows: z.array(z.record(z.string(), z.unknown())).max(1000),
+  dryRun: z.boolean().optional(),
+  isScheduled: z.boolean().optional(),
+  countryOrigin: z.string().max(80).optional(),
+  countryDestination: z.string().max(80).optional(),
+});
+
+export type ImportOperationsRequest = z.infer<typeof importOperationsRequestSchema>;
+
 export const createOperationRequestSchema = z.discriminatedUnion('module', [
   z.object({ module: z.literal('transferencia'), header: operationHeaderSchema, details: transferInputSchema }),
   z.object({ module: z.literal('cripto'), header: operationHeaderSchema, details: cryptoInputSchema }),
@@ -84,7 +108,7 @@ export const createOperationRequestSchema = z.discriminatedUnion('module', [
 
 export type CreateOperationRequest = z.infer<typeof createOperationRequestSchema>;
 
-// ---------- Alta de usuarios (Netlify Function admin-users) ----------
+// ---------- Alta de usuarios (endpoint admin-users) ----------
 
 export const userRoleSchema = z.enum(['super_admin', 'admin', 'operador', 'auditor']);
 

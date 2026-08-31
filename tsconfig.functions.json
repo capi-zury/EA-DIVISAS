@@ -4,7 +4,7 @@
     "lib": ["ES2023"],
     "module": "esnext",
     "moduleResolution": "bundler",
-    "allowImportingTsExtensions": false,
+    "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,
@@ -15,5 +15,5 @@
     "esModuleInterop": true,
     "types": ["node"]
   },
-  "include": ["netlify/functions", "src/lib/calc-engine", "src/lib/domain"]
+  "include": ["src/lib/server", "src/lib/calc-engine", "src/lib/domain", "src/lib/import"]
 }

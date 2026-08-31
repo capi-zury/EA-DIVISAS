@@ -3,6 +3,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { Modal } from '../../components/ui/Modal';
 import { Hint } from '../../components/ui/Hint';
 import { AttachmentsSection } from '../../components/ui/AttachmentsSection';
+import { TransferImportDialog } from '../../components/operations/TransferImportDialog';
 import { useClients, useCreateOperation, useCurrencies, useOperations, useProviders, useUpdateOperationStatus, useUpdateTransferOperation } from '../../lib/api/hooks';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { fmtDateTime, fmtMoney } from '../../lib/format';
@@ -10,9 +11,12 @@ import { calcTransfer, toDisplayNumber } from '../../lib/calc-engine';
 import { OPERATION_STATUS_LABELS, ALLOWED_TRANSITIONS, type OperationStatus } from '../../lib/domain/operation-status';
 
 export function TransfersModulePage() {
+  const { profile } = useAuth();
   const { data: operations, isLoading } = useOperations('transferencia');
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [detailOp, setDetailOp] = useState<any | null>(null);
+  const canImport = profile ? ['super_admin', 'admin', 'operador'].includes(profile.role) : false;
 
   return (
     <div>
@@ -20,9 +24,16 @@ export function TransfersModulePage() {
         title="Transferencias internacionales"
         subtitle="Tipo de cambio de compra y venta siempre separados — el spread y la comisión se calculan solos"
         actions={
-          <button className="btn btn-primary" onClick={() => setShowForm(true)}>
-            + Nueva operación
-          </button>
+          <>
+            {canImport && (
+              <button className="btn btn-ghost" onClick={() => setShowImport(true)}>
+                Importar de Excel
+              </button>
+            )}
+            <button className="btn btn-primary" onClick={() => setShowForm(true)}>
+              + Nueva operación
+            </button>
+          </>
         }
       />
 
@@ -65,6 +76,10 @@ export function TransfersModulePage() {
 
       <Modal open={showForm} onClose={() => setShowForm(false)} title="Nueva operación — Transferencia" width={640}>
         <TransferForm onDone={() => setShowForm(false)} />
+      </Modal>
+
+      <Modal open={showImport} onClose={() => setShowImport(false)} title="Importar transferencias de Excel / CSV" width={760}>
+        <TransferImportDialog onClose={() => setShowImport(false)} />
       </Modal>
 
       <Modal open={!!detailOp} onClose={() => setDetailOp(null)} title={`Operación ${detailOp?.folio ?? ''}`} width={640}>

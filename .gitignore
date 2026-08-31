@@ -16,7 +16,13 @@ dist-ssr
 .env
 .env.*
 !.env.example
+
+# Herramientas / temporales
 .netlify
+.wrangler
+supabase/.temp
+.supabase
+*.tsbuildinfo
 
 # Editor directories and files
 .vscode/*

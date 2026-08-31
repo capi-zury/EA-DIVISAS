@@ -1,20 +1,33 @@
 import { supabase } from '../supabase/client';
 
-/** Llama a una Netlify Function pasando el JWT de la sesión actual. */
+/**
+ * Llama a una Edge Function de Supabase (create-operation, admin-users,
+ * import-operations) pasando el JWT de la sesión actual — supabase-js lo
+ * adjunta solo. La lógica de esos endpoints vive en src/lib/server/ y corre
+ * dentro de Supabase (Deno).
+ */
 export async function callFunction<T>(name: string, body: unknown): Promise<T> {
   const { data: sessionData } = await supabase.auth.getSession();
-  const token = sessionData.session?.access_token;
-  if (!token) throw new Error('No hay sesión activa.');
+  if (!sessionData.session?.access_token) throw new Error('No hay sesión activa.');
 
-  const res = await fetch(`/.netlify/functions/${name}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
+  const { data, error } = await supabase.functions.invoke<T>(name, {
+    body: body as Record<string, unknown>,
   });
 
-  const json = await res.json();
-  if (!res.ok) {
-    throw new Error(json?.error ? `${json.error}${json.details ? ' — ' + json.details : ''}` : `Error ${res.status}`);
+  if (error) {
+    // El cuerpo JSON con { error, details } viene en la respuesta cruda.
+    let message = error.message;
+    const ctx = (error as { context?: Response }).context;
+    if (ctx && typeof ctx.json === 'function') {
+      try {
+        const j = (await ctx.json()) as { error?: string; details?: string };
+        if (j?.error) message = `${j.error}${j.details ? ' — ' + j.details : ''}`;
+      } catch {
+        /* se queda el mensaje genérico */
+      }
+    }
+    throw new Error(message);
   }
-  return json as T;
+
+  return data as T;
 }

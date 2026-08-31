@@ -1,15 +1,16 @@
 #!/usr/bin/env -S npx tsx
 /**
  * Prueba de humo end-to-end: inicia sesión como el usuario real, llama al
- * handler de create-operation.ts directamente (sin desplegar a Netlify) y
- * confirma que la operación quedó insertada en la base con los cálculos
- * correctos. Usa is_demo: true — nunca mezclar con datos reales.
+ * handler de create-operation directamente (sin desplegar) y confirma que
+ * la operación quedó insertada en la base con los cálculos correctos.
+ * Usa is_demo: true — nunca mezclar con datos reales.
  *
- * Uso: npx tsx scripts/smoke-test-create-operation.mts
+ * Uso: npx tsx scripts/smoke-test-create-operation.mts <password>
  */
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
-import { handler } from '../netlify/functions/create-operation';
+import { handleCreateOperation } from '../src/lib/server/create-operation';
+import type { ServerEnv } from '../src/lib/server/types';
 
 const url = process.env.VITE_SUPABASE_URL!;
 const anonKey = process.env.VITE_SUPABASE_ANON_KEY!;
@@ -45,21 +46,21 @@ async function main() {
     },
   };
 
-  const res: any = await handler({
-    httpMethod: 'POST',
-    body: JSON.stringify(body),
-    headers: { authorization: `Bearer ${authData.session.access_token}` },
+  const res = await handleCreateOperation({
+    method: 'POST',
+    rawBody: JSON.stringify(body),
+    authHeader: `Bearer ${authData.session.access_token}`,
+    env: process.env as ServerEnv,
   });
 
-  console.log('Status:', res.statusCode);
-  const parsed = JSON.parse(res.body);
-  console.log(JSON.stringify(parsed, null, 2));
+  console.log('Status:', res.status);
+  console.log(JSON.stringify(res.body, null, 2));
 
-  if (res.statusCode !== 201) {
+  if (res.status !== 201) {
     throw new Error('La función no devolvió 201.');
   }
 
-  const opId = parsed.operation.id;
+  const opId = (res.body as { operation: { id: string } }).operation.id;
   const { data: fetched, error: fetchError } = await client
     .schema('divisas')
     .from('operations')

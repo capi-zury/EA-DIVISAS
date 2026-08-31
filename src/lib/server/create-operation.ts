@@ -2,47 +2,42 @@
  * Única vía para crear una operación (transferencia/cripto/efectivo).
  *
  * RLS bloquea el INSERT directo en divisas.operations para todos los
- * roles — a propósito. Esta función es la que:
+ * roles — a propósito. Este handler es el que:
  *   1. Verifica quién llama (JWT) y su rol.
  *   2. Corre el motor de cálculo centralizado (src/lib/calc-engine) sobre
  *      los insumos crudos — nunca confía en un total que venga ya calculado
  *      del navegador.
  *   3. Persiste cabecera + detalle de módulo en una transacción (RPC SQL).
+ *
+ * Agnóstico de plataforma: lo invocan los adaptadores de Cloudflare Pages
+ * (functions/api/create-operation.ts) y Netlify (netlify/functions/...).
  */
-import { calcCash, calcCrypto, calcTransfer, toDisplayNumber } from '../../src/lib/calc-engine';
-import { getCallerProfile, getCallingUser, supabaseAdmin } from './_shared/supabase-admin';
-import { createOperationRequestSchema } from './_shared/schemas';
+import { calcCash, calcCrypto, calcTransfer, toDisplayNumber } from '../calc-engine';
+import { getCallerProfile, getCallingUser, supabaseAdmin } from './supabase';
+import { createOperationRequestSchema } from './schemas';
+import { created, fail, type ServerRequest, type ServerResponse } from './types';
 
 const ALLOWED_ROLES = new Set(['super_admin', 'admin', 'operador']);
 
-function json(statusCode: number, body: unknown) {
-  return { statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
-}
+export async function handleCreateOperation(req: ServerRequest): Promise<ServerResponse> {
+  if (req.method !== 'POST') return fail(405, 'Método no permitido.');
 
-export const handler = async (event: { httpMethod: string; body: string | null; headers: Record<string, string | undefined> }) => {
-  if (event.httpMethod !== 'POST') {
-    return json(405, { error: 'Método no permitido.' });
-  }
+  const user = await getCallingUser(req.authHeader, req.env);
+  if (!user) return fail(401, 'No autenticado.');
 
-  const user = await getCallingUser(event.headers.authorization || event.headers.Authorization);
-  if (!user) return json(401, { error: 'No autenticado.' });
-
-  const profile = await getCallerProfile(user.id);
-  if (!profile || !profile.active) return json(403, { error: 'Usuario inactivo o sin perfil.' });
-  if (!ALLOWED_ROLES.has(profile.role)) return json(403, { error: `Rol ${profile.role} no puede crear operaciones.` });
+  const profile = await getCallerProfile(user.id, req.env);
+  if (!profile || !profile.active) return fail(403, 'Usuario inactivo o sin perfil.');
+  if (!ALLOWED_ROLES.has(profile.role)) return fail(403, `Rol ${profile.role} no puede crear operaciones.`);
 
   let payload;
   try {
-    payload = createOperationRequestSchema.parse(JSON.parse(event.body || '{}'));
+    payload = createOperationRequestSchema.parse(JSON.parse(req.rawBody || '{}'));
   } catch (err) {
-    return json(400, { error: 'Entrada inválida.', details: err instanceof Error ? err.message : String(err) });
+    return fail(400, 'Entrada inválida.', err instanceof Error ? err.message : String(err));
   }
 
-  const admin = supabaseAdmin();
-  const header = {
-    ...payload.header,
-    created_by: user.id,
-  };
+  const admin = supabaseAdmin(req.env);
+  const header = { ...payload.header, created_by: user.id };
 
   try {
     if (payload.module === 'transferencia') {
@@ -94,7 +89,7 @@ export const handler = async (event: { httpMethod: string; body: string | null; 
         },
       });
       if (error) throw error;
-      return json(201, { operation: data, calc });
+      return created({ operation: data, calc });
     }
 
     if (payload.module === 'cripto') {
@@ -146,7 +141,7 @@ export const handler = async (event: { httpMethod: string; body: string | null; 
         },
       });
       if (error) throw error;
-      return json(201, { operation: data, calc });
+      return created({ operation: data, calc });
     }
 
     // efectivo
@@ -188,9 +183,8 @@ export const handler = async (event: { httpMethod: string; body: string | null; 
       },
     });
     if (error) throw error;
-    return json(201, { operation: data, calc });
+    return created({ operation: data, calc });
   } catch (err) {
-    console.error(err);
-    return json(500, { error: 'No se pudo crear la operación.', details: err instanceof Error ? err.message : String(err) });
+    return fail(500, 'No se pudo crear la operación.', err instanceof Error ? err.message : String(err));
   }
-};
+}

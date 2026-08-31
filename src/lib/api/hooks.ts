@@ -240,6 +240,65 @@ export function useCreateOperation() {
   });
 }
 
+// ---------- Importación de transferencias ----------
+
+export interface ImportRowResult {
+  row: number;
+  status: 'created' | 'skipped' | 'error' | 'ready';
+  folio?: string;
+  operationId?: string;
+  clientName?: string | null;
+  willCreateClient?: boolean;
+  amountUsd?: number | null;
+  opStatus?: string;
+  message?: string;
+}
+
+export interface ImportResponse {
+  batchId: string | null;
+  dryRun: boolean;
+  summary: { total: number; created: number; skipped: number; errors: number; ready: number; newClients: number };
+  results: ImportRowResult[];
+}
+
+export interface ImportRequest {
+  source: 'excel' | 'google_sheet' | 'drive_xlsx';
+  batchId?: string;
+  fileName?: string | null;
+  sheetId?: string | null;
+  mapping?: Record<string, string>;
+  rows: Record<string, unknown>[];
+  dryRun?: boolean;
+  isScheduled?: boolean;
+  countryOrigin?: string;
+  countryDestination?: string;
+}
+
+export function useImportOperations() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ImportRequest) => callFunction<ImportResponse>('import-operations', body),
+    onSuccess: (data) => {
+      if (data.dryRun) return;
+      qc.invalidateQueries({ queryKey: ['operations', 'transferencia'] });
+      qc.invalidateQueries({ queryKey: ['clients'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['import_batches'] });
+    },
+  });
+}
+
+export function useImportBatches() {
+  return useQuery({
+    queryKey: ['import_batches'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('import_batches').select('*').order('started_at', { ascending: false }).limit(50);
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
 export function useUpdateOperationStatus() {
   const qc = useQueryClient();
   return useMutation({
