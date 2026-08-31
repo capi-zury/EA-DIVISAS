@@ -27,7 +27,15 @@ export function LoginPage() {
           <img
             src="/ea-divisas-logo.jpg"
             alt="EA Divisas"
-            style={{ width: '100%', maxWidth: 260, objectFit: 'contain', display: 'block', margin: '0 auto 12px', mixBlendMode: 'screen' }}
+            style={{
+              width: '100%',
+              maxWidth: 260,
+              objectFit: 'contain',
+              display: 'block',
+              margin: '0 auto 12px',
+              mixBlendMode: 'screen',
+              filter: 'brightness(2.2) contrast(1.15) saturate(1.3)',
+            }}
           />
           <h1 style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-dim)', letterSpacing: '0.04em' }}>Sistema de Operaciones</h1>
         </div>

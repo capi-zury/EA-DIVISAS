@@ -56,7 +56,14 @@ export function Sidebar({ open, onNavigate }: { open?: boolean; onNavigate?: () 
         <img
           src="/ea-divisas-logo.jpg"
           alt="EA Divisas"
-          style={{ width: '100%', maxHeight: 52, objectFit: 'contain', display: 'block', mixBlendMode: 'screen' }}
+          style={{
+            width: '100%',
+            maxHeight: 56,
+            objectFit: 'contain',
+            display: 'block',
+            mixBlendMode: 'screen',
+            filter: 'brightness(2.2) contrast(1.15) saturate(1.3)',
+          }}
         />
       </div>
 
