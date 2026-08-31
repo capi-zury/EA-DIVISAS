@@ -10,6 +10,7 @@ import {
   type ColumnMapping,
   type ImportField,
 } from '../../lib/import/transfer-import';
+import { OPERATION_STATUSES, OPERATION_STATUS_LABELS } from '../../lib/domain/operation-status';
 
 const MAPPING_STORAGE_KEY = 'ea-divisas:transfer-import-mapping';
 const CHUNK_SIZE = 200;
@@ -90,6 +91,7 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
   const [mapping, setMapping] = useState<ColumnMapping>({});
   const [countryOrigin, setCountryOrigin] = useState('México');
   const [countryDestination, setCountryDestination] = useState('Estados Unidos');
+  const [defaultStatus, setDefaultStatus] = useState('completada');
 
   const [preview, setPreview] = useState<ImportResponse | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -166,6 +168,7 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
       dryRun: true,
       countryOrigin,
       countryDestination,
+      defaultStatus,
     });
     setPreview(res);
     setStep('preview');
@@ -193,6 +196,7 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
         dryRun: false,
         countryOrigin,
         countryDestination,
+        defaultStatus,
       });
       batchId = res.batchId ?? batchId;
       all.push(...res.results);
@@ -309,18 +313,29 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
 
           <div className="grid-2" style={{ gap: '8px 16px', marginTop: 8 }}>
             <div className="field">
+              <label>Estado de las operaciones importadas</label>
+              <select value={defaultStatus} onChange={(e) => setDefaultStatus(e.target.value)}>
+                {OPERATION_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {OPERATION_STATUS_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
               <label>País origen (para todas las filas)</label>
               <input value={countryOrigin} onChange={(e) => setCountryOrigin(e.target.value)} />
             </div>
             <div className="field">
-              <label>País destino (para todas las filas)</label>
+              <label>País destino (si no se detecta de la dirección)</label>
               <input value={countryDestination} onChange={(e) => setCountryDestination(e.target.value)} />
             </div>
           </div>
 
           <Callout>
             Las filas se registran con el <strong>principal en USD</strong> y <strong>sin margen</strong> (tu tabla trae un solo
-            tipo de cambio). El TC y el equivalente en pesos quedan como referencia en cada operación.
+            tipo de cambio). El TC y el equivalente en pesos quedan como referencia. El país destino se deduce de la dirección
+            del beneficiario cuando se puede; si la columna STATUS viene vacía se usa el estado que elijas arriba.
           </Callout>
 
           {!mappedMonto && (

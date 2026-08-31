@@ -185,6 +185,43 @@ export function cleanText(value: unknown): string | null {
   return s === '' ? null : s;
 }
 
+// ---------- País del beneficiario (deducido de la dirección) ----------
+
+// Orden importante: lo más específico primero (Hong Kong antes que China).
+const COUNTRY_PATTERNS: [RegExp, string][] = [
+  [/\bHONG ?KONG\b|\bHK\b/, 'Hong Kong'],
+  [/\bTAIWAN\b/, 'Taiwán'],
+  [/\bP\.? ?R\.? ?CHINA\b|\bCHINA\b|\bGUANGDONG\b|\bZHEJIANG\b|\bSHENZHEN\b|\bSHANGHAI\b|\bNINGBO\b|\bXIAMEN\b|\bHANGZHOU\b|\bZHONGSHAN\b/, 'China'],
+  [/\bTBILISI\b|\bGEORGIA\b/, 'Georgia'],
+  [/\bUNITED STATES\b|\bUSA\b|\bU S A\b|\b[A-Z]{2} \d{5}(-\d{4})? ?,? ?USA\b/, 'Estados Unidos'],
+  [/\bUNITED KINGDOM\b|\bLONDON\b|\bENGLAND\b/, 'Reino Unido'],
+  [/\bTURKEY\b|\bTURKIYE\b|\bISTANBUL\b/, 'Turquía'],
+  [/\bINDIA\b|\bMUMBAI\b|\bDELHI\b/, 'India'],
+  [/\bVIETNAM\b|\bVIET NAM\b/, 'Vietnam'],
+  [/\bSINGAPORE\b/, 'Singapur'],
+  [/\bTHAILAND\b|\bBANGKOK\b/, 'Tailandia'],
+  [/\bINDONESIA\b|\bJAKARTA\b/, 'Indonesia'],
+  [/\bSOUTH KOREA\b|\bKOREA\b|\bSEOUL\b/, 'Corea del Sur'],
+  [/\bJAPAN\b|\bTOKYO\b/, 'Japón'],
+  [/\bGERMANY\b|\bDEUTSCHLAND\b/, 'Alemania'],
+  [/\bSPAIN\b|\bESPANA\b|\bMADRID\b|\bBARCELONA\b/, 'España'],
+  [/\bITALY\b|\bITALIA\b/, 'Italia'],
+  [/\bU\.?A\.?E\.?\b|\bEMIRATES\b|\bDUBAI\b/, 'Emiratos Árabes Unidos'],
+  [/\bCANADA\b/, 'Canadá'],
+  [/\bBRAZIL\b|\bBRASIL\b/, 'Brasil'],
+  [/\bMEXICO\b/, 'México'],
+];
+
+/** Deduce el país a partir de uno o más textos de dirección. null si no hay pista clara. */
+export function detectCountry(...texts: (string | null | undefined)[]): string | null {
+  const hay = normalizeKey(texts.filter(Boolean).join(' | '));
+  if (!hay) return null;
+  for (const [re, country] of COUNTRY_PATTERNS) {
+    if (re.test(hay)) return country;
+  }
+  return null;
+}
+
 // ---------- Status ----------
 
 const STATUS_ALIASES: Record<string, OperationStatus> = {
@@ -265,6 +302,8 @@ export interface NormalizedTransferRow {
   statusMatched: boolean;
   amountUsd: number | null;
   tc: number | null;
+  /** País del beneficiario, deducido de sus direcciones (null si no se pudo). */
+  destinationCountry: string | null;
   concepto: string | null;
   observaciones: string | null;
   banking: {
@@ -333,9 +372,20 @@ function get(row: RawRow, mapping: ColumnMapping, field: ImportField): unknown {
   return col ? row[col] : undefined;
 }
 
-export function normalizeRow(row: RawRow, mapping: ColumnMapping, index: number): NormalizedTransferRow {
+export interface NormalizeOptions {
+  /** Estado para las filas cuya columna STATUS viene vacía o sin mapear. Por defecto 'completada'. */
+  defaultStatus?: OperationStatus;
+}
+
+export function normalizeRow(
+  row: RawRow,
+  mapping: ColumnMapping,
+  index: number,
+  opts: NormalizeOptions = {},
+): NormalizedTransferRow {
   const errors: string[] = [];
   const warnings: string[] = [];
+  const fallbackStatus = opts.defaultStatus ?? 'completada';
 
   const amountUsd = parseAmount(get(row, mapping, 'montoUsd'));
   if (amountUsd == null) errors.push('Monto USD vacío o no numérico.');
@@ -350,12 +400,27 @@ export function normalizeRow(row: RawRow, mapping: ColumnMapping, index: number)
   }
 
   const statusRaw = cleanText(get(row, mapping, 'status'));
-  const { status, matched } = mapStatus(statusRaw);
-  if (statusRaw && !matched) warnings.push(`Status "${statusRaw}" no reconocido — se deja en Pendiente.`);
+  const mapped = mapStatus(statusRaw);
+  let status: OperationStatus;
+  let matched: boolean;
+  if (!statusRaw) {
+    status = fallbackStatus;
+    matched = true;
+  } else if (mapped.matched) {
+    status = mapped.status;
+    matched = true;
+  } else {
+    status = fallbackStatus;
+    matched = false;
+    warnings.push(`Status "${statusRaw}" no reconocido — se usa el estado por defecto.`);
+  }
 
   const tc = parseAmount(get(row, mapping, 'tc'));
   const uetr = cleanText(get(row, mapping, 'uetr'));
   const beneficiario = cleanText(get(row, mapping, 'beneficiario'));
+  const direccionBeneficiario = cleanText(get(row, mapping, 'direccionBeneficiario'));
+  const direccionBanco = cleanText(get(row, mapping, 'direccionBanco'));
+  const destinationCountry = detectCountry(direccionBeneficiario, direccionBanco, beneficiario);
 
   const importKey = uetr
     ? `uetr:${normalizeKey(uetr)}`
@@ -372,6 +437,7 @@ export function normalizeRow(row: RawRow, mapping: ColumnMapping, index: number)
     statusMatched: matched,
     amountUsd,
     tc,
+    destinationCountry,
     concepto: cleanText(get(row, mapping, 'concepto')),
     observaciones: cleanText(get(row, mapping, 'observaciones')),
     banking: {
@@ -381,8 +447,8 @@ export function normalizeRow(row: RawRow, mapping: ColumnMapping, index: number)
       banco: cleanText(get(row, mapping, 'banco')),
       swift: cleanText(get(row, mapping, 'swift')),
       bancoIntermediario: cleanText(get(row, mapping, 'bancoIntermediario')),
-      direccionBanco: cleanText(get(row, mapping, 'direccionBanco')),
-      direccionBeneficiario: cleanText(get(row, mapping, 'direccionBeneficiario')),
+      direccionBanco,
+      direccionBeneficiario,
       taxId: cleanText(get(row, mapping, 'taxId')),
       uetr,
       flagAlta: cleanText(get(row, mapping, 'alta')),
@@ -395,8 +461,8 @@ export function normalizeRow(row: RawRow, mapping: ColumnMapping, index: number)
   };
 }
 
-export function normalizeRows(rows: RawRow[], mapping: ColumnMapping): NormalizedTransferRow[] {
-  return rows.map((row, i) => normalizeRow(row, mapping, i));
+export function normalizeRows(rows: RawRow[], mapping: ColumnMapping, opts: NormalizeOptions = {}): NormalizedTransferRow[] {
+  return rows.map((row, i) => normalizeRow(row, mapping, i, opts));
 }
 
 // ---------- Fila normalizada → payload para create_transfer_operation ----------
@@ -441,7 +507,7 @@ export function buildCreatePayload(row: NormalizedTransferRow, opts: BuildPayloa
 
   const details = {
     country_origin: opts.countryOrigin ?? 'México',
-    country_destination: opts.countryDestination ?? 'Estados Unidos',
+    country_destination: row.destinationCountry ?? opts.countryDestination ?? 'Estados Unidos',
     currency_origin: 'USD',
     currency_destination: 'USD',
     amount_sent: amount,

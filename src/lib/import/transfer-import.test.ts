@@ -145,8 +145,42 @@ describe('normalizeRow', () => {
     const r = normalizeRow(teamRow({ CLIENTE: '', FECHA: 'xyz', STATUS: 'raro' }), fullMapping, 0);
     expect(r.errors).toEqual([]);
     expect(r.warnings).toHaveLength(3);
-    expect(r.status).toBe('pendiente');
+    expect(r.status).toBe('completada'); // status sin reconocer → estado por defecto
     expect(r.clientName).toBeNull();
+  });
+
+  it('STATUS vacío usa el estado por defecto (completada) sin avisar', () => {
+    const r = normalizeRow(teamRow({ STATUS: '' }), fullMapping, 0);
+    expect(r.status).toBe('completada');
+    expect(r.warnings).toEqual([]);
+  });
+
+  it('respeta el defaultStatus indicado', () => {
+    const r = normalizeRow(teamRow({ STATUS: '' }), fullMapping, 0, { defaultStatus: 'enviada' });
+    expect(r.status).toBe('enviada');
+  });
+
+  it('un STATUS reconocido gana sobre el default', () => {
+    const r = normalizeRow(teamRow({ STATUS: 'PAGADO' }), fullMapping, 0, { defaultStatus: 'completada' });
+    expect(r.status).toBe('enviada');
+  });
+
+  it('deduce el país destino de la dirección del beneficiario', () => {
+    const china = normalizeRow(
+      teamRow({ 'DIRECCION DE BENEFICIARIO': 'Guzhen Town, Zhongshan, Guangdong, 528000, China' }),
+      fullMapping,
+      0,
+    );
+    expect(china.destinationCountry).toBe('China');
+
+    const hk = normalizeRow(teamRow({ 'DIRECCION DE BENEFICIARIO': '8 Connaught Road Central, Hong Kong' }), fullMapping, 0);
+    expect(hk.destinationCountry).toBe('Hong Kong');
+
+    const usa = normalizeRow(teamRow({ 'DIRECCION DE BENEFICIARIO': '1300 John Reed Ct, City of Industry, CA 91745, USA' }), fullMapping, 0);
+    expect(usa.destinationCountry).toBe('Estados Unidos');
+
+    const nada = normalizeRow(teamRow({ 'DIRECCION DE BENEFICIARIO': 'calle sin país' }), fullMapping, 0);
+    expect(nada.destinationCountry).toBeNull();
   });
 });
 

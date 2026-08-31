@@ -272,6 +272,7 @@ export interface ImportRequest {
   isScheduled?: boolean;
   countryOrigin?: string;
   countryDestination?: string;
+  defaultStatus?: string;
 }
 
 export function useImportOperations() {

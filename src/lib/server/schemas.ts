@@ -96,6 +96,10 @@ export const importOperationsRequestSchema = z.object({
   isScheduled: z.boolean().optional(),
   countryOrigin: z.string().max(80).optional(),
   countryDestination: z.string().max(80).optional(),
+  /** Estado para las filas cuya columna STATUS viene vacía. Por defecto 'completada'. */
+  defaultStatus: z
+    .enum(['cotizacion', 'pendiente', 'en_proceso', 'enviada', 'completada', 'cancelada', 'reembolsada', 'con_incidencia'])
+    .optional(),
 });
 
 export type ImportOperationsRequest = z.infer<typeof importOperationsRequestSchema>;

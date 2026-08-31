@@ -68,7 +68,7 @@ export async function handleImportOperations(req: ServerRequest): Promise<Server
     return fail(400, 'No se pudo identificar la columna de Monto USD. Revisa el mapeo de columnas.');
   }
 
-  const normalized = normalizeRows(payload.rows as RawRow[], mapping);
+  const normalized = normalizeRows(payload.rows as RawRow[], mapping, { defaultStatus: payload.defaultStatus });
 
   // ---- Deduplicación: qué import_keys ya existen ----
   const keys = [...new Set(normalized.map((r) => r.importKey))];
