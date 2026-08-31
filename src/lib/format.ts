@@ -25,7 +25,10 @@ export function fmtPercent(value: number | string | null | undefined) {
 
 export function fmtDate(value: string | null | undefined) {
   if (!value) return '—';
-  return new Date(value).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: '2-digit' });
+  // Una fecha sola "YYYY-MM-DD" hay que leerla como local, no como UTC
+  // (si no, en México se ve un día antes). Ver parseLocalDate abajo.
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseLocalDate(value) : new Date(value);
+  return d.toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: '2-digit' });
 }
 
 export function fmtDateTime(value: string | null | undefined) {

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { PageHeader } from '../components/ui/PageHeader';
 import { useOperations } from '../lib/api/hooks';
-import { fmtDateTime, fmtMoney } from '../lib/format';
+import { fmtDate, fmtMoney } from '../lib/format';
 import { OPERATION_STATUS_LABELS, type OperationStatus } from '../lib/domain/operation-status';
 
 const MODULES = [
@@ -120,7 +120,7 @@ export function ReportsPage() {
             {filtered.map((op: any) => (
               <tr key={op.id}>
                 <td className="mono">{op.folio}</td>
-                <td>{fmtDateTime(op.created_at)}</td>
+                <td>{fmtDate(op.operation_date)}</td>
                 <td>{op.clients?.name ?? '—'}</td>
                 <td>
                   <span className={`badge badge-${op.status}`}>{OPERATION_STATUS_LABELS[op.status as OperationStatus]}</span>

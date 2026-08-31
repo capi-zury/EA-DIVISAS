@@ -14,7 +14,7 @@ import {
   useUpdateOperationStatus,
 } from '../../lib/api/hooks';
 import { useAuth } from '../../lib/auth/AuthContext';
-import { fmtDateTime, fmtMoney, fmtNumber, fmtPercent } from '../../lib/format';
+import { fmtDate, fmtMoney, fmtNumber, fmtPercent } from '../../lib/format';
 import { calcCrypto, toDisplayNumber } from '../../lib/calc-engine';
 import { OPERATION_STATUS_LABELS, ALLOWED_TRANSITIONS, type OperationStatus } from '../../lib/domain/operation-status';
 
@@ -92,7 +92,7 @@ function OperationRow({ op, onOpenDetail }: { op: any; onOpenDetail: () => void 
   return (
     <tr>
       <td className="mono">{op.folio}</td>
-      <td>{fmtDateTime(op.created_at)}</td>
+      <td>{fmtDate(op.operation_date)}</td>
       <td>{op.clients?.name ?? '—'}</td>
       <td>
         <b>{detail?.crypto_asset_code}</b>

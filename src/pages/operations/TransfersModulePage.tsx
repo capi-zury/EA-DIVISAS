@@ -6,7 +6,7 @@ import { AttachmentsSection } from '../../components/ui/AttachmentsSection';
 import { TransferImportDialog } from '../../components/operations/TransferImportDialog';
 import { useClients, useCreateOperation, useCurrencies, useOperations, useProviders, useUpdateOperationStatus, useUpdateTransferOperation } from '../../lib/api/hooks';
 import { useAuth } from '../../lib/auth/AuthContext';
-import { fmtDateTime, fmtMoney } from '../../lib/format';
+import { fmtDate, fmtMoney } from '../../lib/format';
 import { calcTransfer, toDisplayNumber } from '../../lib/calc-engine';
 import { OPERATION_STATUS_LABELS, ALLOWED_TRANSITIONS, type OperationStatus } from '../../lib/domain/operation-status';
 
@@ -97,7 +97,7 @@ function TransferRow({ op, onOpenDetail }: { op: any; onOpenDetail: () => void }
   return (
     <tr>
       <td className="mono">{op.folio}</td>
-      <td>{fmtDateTime(op.created_at)}</td>
+      <td>{fmtDate(op.operation_date)}</td>
       <td>{op.clients?.name ?? '—'}</td>
       <td>
         {detail?.country_origin} → {detail?.country_destination}

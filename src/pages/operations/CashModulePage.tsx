@@ -5,7 +5,7 @@ import { Hint } from '../../components/ui/Hint';
 import { AttachmentsSection } from '../../components/ui/AttachmentsSection';
 import { useClients, useCreateOperation, useCurrencies, useOperations, useProviders, useUpdateCashOperation, useUpdateOperationStatus } from '../../lib/api/hooks';
 import { useAuth } from '../../lib/auth/AuthContext';
-import { fmtDateTime, fmtMoney, fmtNumber } from '../../lib/format';
+import { fmtDate, fmtMoney, fmtNumber } from '../../lib/format';
 import { calcCash, toDisplayNumber } from '../../lib/calc-engine';
 import { OPERATION_STATUS_LABELS, ALLOWED_TRANSITIONS, type OperationStatus } from '../../lib/domain/operation-status';
 
@@ -83,7 +83,7 @@ function CashRow({ op, onOpenDetail }: { op: any; onOpenDetail: () => void }) {
   return (
     <tr>
       <td className="mono">{op.folio}</td>
-      <td>{fmtDateTime(op.created_at)}</td>
+      <td>{fmtDate(op.operation_date)}</td>
       <td>{op.clients?.name ?? '—'}</td>
       <td>
         <b>{detail?.currency_code}</b>
