@@ -96,18 +96,14 @@ function TransferRow({ op, onOpenDetail }: { op: any; onOpenDetail: () => void }
 
   return (
     <tr>
-      <td className="mono">{op.folio}</td>
-      <td>{fmtDate(op.operation_date)}</td>
+      <td className="mono" style={{ whiteSpace: 'nowrap' }}>{op.folio}</td>
+      <td style={{ whiteSpace: 'nowrap' }}>{fmtDate(op.operation_date)}</td>
       <td>{op.clients?.name ?? '—'}</td>
-      <td>
+      <td style={{ whiteSpace: 'nowrap' }}>
         {detail?.country_origin} → {detail?.country_destination}
       </td>
-      <td className="num">
-        {fmtMoney(detail?.amount_sent, detail?.currency_origin)} <span style={{ color: 'var(--text-mute)' }}>{detail?.currency_origin}</span>
-      </td>
-      <td className="num">
-        {fmtMoney(detail?.amount_received, detail?.currency_destination)} <span style={{ color: 'var(--text-mute)' }}>{detail?.currency_destination}</span>
-      </td>
+      <td className="num" style={{ whiteSpace: 'nowrap' }}>{fmtMoney(detail?.amount_sent, detail?.currency_origin)}</td>
+      <td className="num" style={{ whiteSpace: 'nowrap' }}>{fmtMoney(detail?.amount_received, detail?.currency_destination)}</td>
       <td className={`num ${Number(op.net_profit) >= 0 ? 'pos' : 'neg'}`}>{fmtMoney(op.net_profit)}</td>
       <td>
         <span className={`badge badge-${op.status}`}>{OPERATION_STATUS_LABELS[op.status as OperationStatus]}</span>
