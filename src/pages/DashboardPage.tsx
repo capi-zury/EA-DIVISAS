@@ -13,12 +13,10 @@ const PERIODS = [
 
 const REFRESH_MS = 60_000;
 
+/** Inicio de la ventana "semana": los últimos 7 días (hoy incluido).
+ *  Antes era "desde el lunes", que en lunes daba lo mismo que "Hoy". */
 function startOfWeek(d: Date) {
-  const day = d.getDay();
-  const diff = (day === 0 ? -6 : 1) - day; // lunes como inicio
-  const r = new Date(d);
-  r.setDate(d.getDate() + diff);
-  r.setHours(0, 0, 0, 0);
+  const r = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 6);
   return r;
 }
 
@@ -83,11 +81,11 @@ export function DashboardPage() {
         );
 
     return {
-      today: sum(ranges.today),
-      week: sum(ranges.weekStart),
-      month: sum(ranges.monthStart),
+      today: sum(ranges.today, ranges.tomorrow), // solo el día de hoy
+      week: sum(ranges.weekStart, ranges.tomorrow),
+      month: sum(ranges.monthStart, ranges.tomorrow),
       prevMonth: sum(ranges.prevMonthStart, ranges.monthStart),
-      year: sum(ranges.yearStart),
+      year: sum(ranges.yearStart, ranges.tomorrow),
     };
   }, [daily, ranges]);
 
@@ -205,7 +203,7 @@ export function DashboardPage() {
       </div>
 
       <div className="grid-4" style={{ marginBottom: 18 }}>
-        <KpiCard label="Utilidad semana" value={fmtMoney(totals.week.profit)} tone={totals.week.profit >= 0 ? 'pos' : 'neg'} />
+        <KpiCard label="Utilidad 7 días" value={fmtMoney(totals.week.profit)} tone={totals.week.profit >= 0 ? 'pos' : 'neg'} />
         <KpiCard label="Ingresos mes" value={fmtMoney(totals.month.revenue)} />
         <KpiCard label="Costos mes" value={fmtMoney(totals.month.costs)} />
         <KpiCard label="Utilidad año" value={fmtMoney(totals.year.profit)} tone={totals.year.profit >= 0 ? 'pos' : 'neg'} />
