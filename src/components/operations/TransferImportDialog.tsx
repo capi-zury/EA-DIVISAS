@@ -118,9 +118,11 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
       const XLSX = await import('xlsx');
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { cellDates: true });
+      // raw: true + cellDates → las fechas llegan como Date reales (sin ambigüedad
+      // día/mes); números como números. El resto lo normaliza transfer-import.
       const parsed: Sheet[] = wb.SheetNames.map((name) => ({
         name,
-        aoa: XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name], { header: 1, raw: false, defval: '', blankrows: false }),
+        aoa: XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name], { header: 1, raw: true, defval: '', blankrows: false }),
       })).filter((s) => s.aoa.length > 0);
 
       if (!parsed.length) {
