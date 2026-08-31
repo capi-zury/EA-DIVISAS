@@ -6,7 +6,7 @@
  *
  * Compartido frontend (asistente de importación) / servidor (Edge Function).
  */
-import { normalizeKey, parseAmount, parseDate } from './transfer-import';
+import { normalizeKey, parseAmount, parseDate } from './transfer-import.ts';
 
 export interface EcPago {
   client: string;
