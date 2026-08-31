@@ -52,12 +52,14 @@ export function Sidebar({ open, onNavigate }: { open?: boolean; onNavigate?: () 
         left: 0,
       }}
     >
-      <div style={{ padding: '16px 20px 12px', overflow: 'hidden', borderRadius: 10 }}>
-        <img
-          src="/ea-divisas-logo.jpg"
-          alt="EA Divisas"
-          style={{ width: '100%', height: 58, objectFit: 'cover', objectPosition: 'center', borderRadius: 8, display: 'block' }}
-        />
+      <div style={{ padding: '16px 16px 12px' }}>
+        <div style={{ background: '#fff', borderRadius: 10, padding: '10px 14px', display: 'flex', justifyContent: 'center' }}>
+          <img
+            src="/ea-divisas-logo.jpg"
+            alt="EA Divisas"
+            style={{ width: '100%', maxHeight: 46, objectFit: 'contain', display: 'block' }}
+          />
+        </div>
       </div>
 
       <nav style={{ flex: 1, overflowY: 'auto', padding: '4px 12px' }} onClick={onNavigate}>

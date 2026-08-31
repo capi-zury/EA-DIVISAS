@@ -89,7 +89,6 @@ export function DashboardPage() {
     };
   }, [daily, ranges]);
 
-  const monthMargin = totals.month.revenue > 0 ? (totals.month.profit / totals.month.revenue) * 100 : 0;
   const monthDelta =
     totals.prevMonth.profit === 0 ? null : ((totals.month.profit - totals.prevMonth.profit) / Math.abs(totals.prevMonth.profit)) * 100;
 
@@ -187,34 +186,31 @@ export function DashboardPage() {
                 {monthDelta > 0 ? '▲' : monthDelta < 0 ? '▼' : '='} {fmtNumber(Math.abs(monthDelta), 1)}% vs mes anterior
               </span>
             )}
-            <span>
-              Margen {fmtPercent(monthMargin)} · {fmtNumber(totals.month.operations, 0)} operaciones
-            </span>
+            <span>{fmtNumber(totals.month.operations, 0)} operaciones este mes</span>
           </div>
         </div>
 
         <div className="hero-card">
           <div className="hero-label">Hoy</div>
           <div className={`hero-value sm ${totals.today.profit >= 0 ? 'pos' : 'neg'}`}>{fmtMoney(totals.today.profit)}</div>
-          <div className="hero-sub">
-            {fmtNumber(totals.today.operations, 0)} operaciones · ingresos {fmtMoney(totals.today.revenue)}
-          </div>
+          <div className="hero-sub">{fmtNumber(totals.today.operations, 0)} operaciones</div>
         </div>
       </div>
 
       <div className="grid-4" style={{ marginBottom: 18 }}>
         <KpiCard label="Utilidad 7 días" value={fmtMoney(totals.week.profit)} tone={totals.week.profit >= 0 ? 'pos' : 'neg'} />
-        <KpiCard label="Ingresos mes" value={fmtMoney(totals.month.revenue)} />
-        <KpiCard label="Costos mes" value={fmtMoney(totals.month.costs)} />
         <KpiCard label="Utilidad año" value={fmtMoney(totals.year.profit)} tone={totals.year.profit >= 0 ? 'pos' : 'neg'} />
+        <KpiCard label="Operaciones (mes)" value={fmtNumber(totals.month.operations, 0)} />
+        <KpiCard
+          label="Utilidad prom. / operación"
+          value={totals.month.operations ? fmtMoney(totals.month.profit / totals.month.operations) : '—'}
+        />
       </div>
 
       <div className="card" style={{ marginBottom: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 14 }}>
           <div style={{ display: 'flex', gap: 30, flexWrap: 'wrap' }}>
-            <ChartStat dot="var(--chart-revenue)" label="Ingresos" value={fmtMoney(chartStats.revenue)} />
-            <ChartStat dot="var(--chart-cost)" label="Costos" value={fmtMoney(chartStats.costs)} />
-            <ChartStat dot="var(--chart-profit)" label="Utilidad" value={fmtMoney(chartStats.profit)} tone={chartStats.profit >= 0 ? 'pos' : 'neg'} />
+            <ChartStat dot="var(--chart-profit)" label="Utilidad del periodo" value={fmtMoney(chartStats.profit)} tone={chartStats.profit >= 0 ? 'pos' : 'neg'} />
           </div>
           <div style={{ display: 'flex', gap: 4, background: 'var(--navy-850)', border: '1px solid var(--border)', borderRadius: 8, padding: 3 }}>
             {PERIODS.map((p) => (
@@ -264,25 +260,6 @@ export function DashboardPage() {
               />
               <YAxis stroke="var(--text-mute)" fontSize={11.5} tickLine={false} axisLine={false} width={58} tickFormatter={(v) => fmtMoneyCompact(v)} />
               <Tooltip cursor={{ stroke: 'var(--border-strong)', strokeWidth: 1, strokeDasharray: '3 3' }} content={<ChartTooltip />} />
-              <Area
-                type="monotone"
-                dataKey="ingresos"
-                name="Ingresos"
-                stroke="var(--chart-revenue)"
-                strokeWidth={2}
-                fill="url(#gRevenue)"
-                activeDot={{ r: 5, fill: 'var(--chart-revenue)', stroke: 'var(--navy-900)', strokeWidth: 2 }}
-              />
-              <Area
-                type="monotone"
-                dataKey="costos"
-                name="Costos"
-                stroke="var(--chart-cost)"
-                strokeWidth={2}
-                fill="none"
-                strokeDasharray="4 3"
-                activeDot={{ r: 5, fill: 'var(--chart-cost)', stroke: 'var(--navy-900)', strokeWidth: 2 }}
-              />
               <Area
                 type="monotone"
                 dataKey="utilidad"

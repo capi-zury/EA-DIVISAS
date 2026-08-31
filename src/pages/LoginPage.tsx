@@ -23,9 +23,11 @@ export function LoginPage() {
   return (
     <div style={{ height: '100vh', display: 'grid', placeItems: 'center', padding: 24 }}>
       <div className="card" style={{ width: 380, maxWidth: '100%' }}>
-        <div style={{ marginBottom: 20, textAlign: 'center' }}>
-          <img src="/ea-divisas-logo.jpg" alt="EA Divisas" style={{ width: '100%', maxWidth: 300, borderRadius: 10, marginBottom: 10 }} />
-          <h1 style={{ fontSize: 16, fontWeight: 500, color: 'var(--text-dim)' }}>Operations</h1>
+        <div style={{ marginBottom: 22, textAlign: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: '16px 20px', marginBottom: 12 }}>
+            <img src="/ea-divisas-logo.jpg" alt="EA Divisas" style={{ width: '100%', maxWidth: 240, objectFit: 'contain', display: 'block', margin: '0 auto' }} />
+          </div>
+          <h1 style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-dim)', letterSpacing: '0.04em' }}>Sistema de Operaciones</h1>
         </div>
 
         <form onSubmit={handleSubmit}>
