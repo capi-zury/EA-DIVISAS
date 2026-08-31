@@ -113,8 +113,13 @@ const seen = new Set<string>();
       const concepto = normalizeKey(ci('CONCEPTO') >= 0 ? r[ci('CONCEPTO')] : '');
       if (concepto.includes('DEVOLUC') || concepto.includes('DEPOSITO') || concepto === 'SALDO') continue;
 
-      const date = parseDate(ci('FECHA DE OPERACION') >= 0 ? r[ci('FECHA DE OPERACION')] : null);
-      const dedupKey = `${benefKey(nombre)}|${Math.round(usd * 100)}|${date ?? ''}`;
+      // fecha de operación; si no hay, la de cierre. Nunca dejar null:
+      // el RPC pondría la fecha de HOY y ensucia el tablero.
+      const date =
+        parseDate(ci('FECHA DE OPERACION') >= 0 ? r[ci('FECHA DE OPERACION')] : null) ??
+        parseDate(ci('FECHA DE CIERRE') >= 0 ? r[ci('FECHA DE CIERRE')] : null);
+      if (!date) continue; // sin ninguna fecha → no se puede ubicar en el tiempo, se omite
+      const dedupKey = `${benefKey(nombre)}|${Math.round(usd * 100)}|${date}`;
       if (seen.has(dedupKey)) continue;
       seen.add(dedupKey);
 
