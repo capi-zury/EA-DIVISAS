@@ -11,9 +11,11 @@ import {
   type ImportField,
 } from '../../lib/import/transfer-import';
 import { OPERATION_STATUSES, OPERATION_STATUS_LABELS } from '../../lib/domain/operation-status';
+import { looksLikeEstadoCuenta, parseEstadoCuenta, type EcPago } from '../../lib/import/estado-cuenta';
 
 const MAPPING_STORAGE_KEY = 'ea-divisas:transfer-import-mapping';
 const CHUNK_SIZE = 200;
+const EC_CHUNK_SIZE = 300;
 const PREVIEW_LIMIT = 1000;
 
 type Step = 'upload' | 'map' | 'preview' | 'done';
@@ -93,6 +95,7 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
   const [countryDestination, setCountryDestination] = useState('Estados Unidos');
   const [defaultStatus, setDefaultStatus] = useState('completada');
 
+  const [ecPagos, setEcPagos] = useState<EcPago[]>([]); // no vacío = modo "estado de cuenta"
   const [preview, setPreview] = useState<ImportResponse | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [finalResults, setFinalResults] = useState<ImportRowResult[]>([]);
@@ -129,9 +132,26 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
         setParseError('El archivo no tiene datos en ninguna hoja.');
         return;
       }
+      setFileName(file.name);
+
+      // ¿Es el "estado de cuenta" (una hoja por cliente)? → sin asistente de
+      // columnas: se lee todo y solo se registran las operaciones nuevas.
+      if (looksLikeEstadoCuenta(parsed)) {
+        const pagos = parseEstadoCuenta(parsed);
+        if (!pagos.length) {
+          setParseError('Es un estado de cuenta pero no encontré operaciones de pago con monto y tipo de cambio.');
+          return;
+        }
+        setEcPagos(pagos);
+        const res = await runImport({ source: 'excel', fileName: file.name, estadoCuenta: pagos, dryRun: true });
+        setPreview(res);
+        setStep('preview');
+        return;
+      }
+
+      setEcPagos([]);
       const first = parsed[0];
       const hr = detectHeaderRow(first.aoa);
-      setFileName(file.name);
       setSheets(parsed);
       setSheetName(first.name);
       setHeaderRow(hr);
@@ -174,6 +194,27 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
     });
     setPreview(res);
     setStep('preview');
+  }
+
+  async function ecRunReal() {
+    const all: ImportRowResult[] = [];
+    const totals = { total: 0, created: 0, skipped: 0, errors: 0, ready: 0, newClients: 0 };
+    setProgress({ done: 0, total: ecPagos.length });
+    for (let i = 0; i < ecPagos.length; i += EC_CHUNK_SIZE) {
+      const chunk = ecPagos.slice(i, i + EC_CHUNK_SIZE);
+      const res = await runImport({ source: 'excel', fileName, estadoCuenta: chunk, dryRun: false });
+      all.push(...res.results);
+      totals.total += res.summary.total;
+      totals.created += res.summary.created;
+      totals.skipped += res.summary.skipped;
+      totals.errors += res.summary.errors;
+      totals.newClients += res.summary.newClients;
+      setProgress({ done: Math.min(i + EC_CHUNK_SIZE, ecPagos.length), total: ecPagos.length });
+    }
+    setFinalResults(all);
+    setRunSummary(totals);
+    setProgress(null);
+    setStep('done');
   }
 
   async function runReal() {
@@ -360,13 +401,18 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
 
       {step === 'preview' && preview && (
         <div>
+          {ecPagos.length > 0 && (
+            <div style={{ fontSize: 12.5, color: 'var(--text-mute)', marginBottom: 12 }}>
+              <strong>{fileName}</strong> · estado de cuenta · {ecPagos.length} operaciones en el archivo
+            </div>
+          )}
           <div className="grid-2" style={{ gap: 10, marginBottom: 14 }}>
-            <Tile label="Listas para importar" value={preview.summary.ready} tone="pos" />
-            <Tile label="Ya importadas (se omiten)" value={preview.summary.skipped} />
+            <Tile label={ecPagos.length ? 'Nuevas a registrar' : 'Listas para importar'} value={preview.summary.ready} tone="pos" />
+            <Tile label="Ya registradas (se omiten)" value={preview.summary.skipped} />
             <Tile label="Con error" value={preview.summary.errors} tone={preview.summary.errors ? 'neg' : undefined} />
             <Tile label="Clientes nuevos a crear" value={preview.summary.newClients} />
           </div>
-          {rows.length > PREVIEW_LIMIT && (
+          {!ecPagos.length && rows.length > PREVIEW_LIMIT && (
             <div style={{ fontSize: 12, color: 'var(--text-mute)', marginBottom: 10 }}>
               Vista previa de las primeras {PREVIEW_LIMIT} filas. Al importar se procesan las {rows.length}.
             </div>
@@ -377,13 +423,19 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
           {error && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 10 }}>{(error as Error).message}</div>}
 
           <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-            <button className="btn btn-ghost" onClick={() => setStep('map')}>
+            <button className="btn btn-ghost" onClick={() => setStep(ecPagos.length ? 'upload' : 'map')}>
               Atrás
             </button>
-            <button className="btn btn-primary" onClick={runReal} disabled={isPending || preview.summary.ready === 0}>
+            <button
+              className="btn btn-primary"
+              onClick={ecPagos.length ? ecRunReal : runReal}
+              disabled={isPending || preview.summary.ready === 0}
+            >
               {progress
-                ? `Importando ${progress.done}/${progress.total}…`
-                : `Importar ${preview.summary.ready} operación${preview.summary.ready === 1 ? '' : 'es'}`}
+                ? `Registrando ${progress.done}/${progress.total}…`
+                : preview.summary.ready === 0
+                  ? 'Nada nuevo que registrar'
+                  : `Registrar ${preview.summary.ready} operación${preview.summary.ready === 1 ? '' : 'es'}`}
             </button>
           </div>
         </div>

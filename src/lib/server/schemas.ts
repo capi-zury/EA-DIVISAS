@@ -91,7 +91,28 @@ export const importOperationsRequestSchema = z.object({
   sheetId: z.string().max(200).optional().nullable(),
   /** campo canónico → encabezado de columna. Si falta, se auto-detecta por los encabezados. */
   mapping: z.record(z.string(), z.string()).optional(),
-  rows: z.array(z.record(z.string(), z.unknown())).max(1000),
+  rows: z.array(z.record(z.string(), z.unknown())).max(1000).optional().default([]),
+  /**
+   * Alternativa al par rows+mapping: filas ya normalizadas del "estado de
+   * cuenta" (formato libro mayor, una hoja por cliente). Se copian tal cual.
+   */
+  estadoCuenta: z
+    .array(
+      z.object({
+        client: z.string(),
+        beneficiary: z.string(),
+        usd: z.number(),
+        tcVenta: z.number(),
+        tcCompra: z.number(),
+        comPct: z.number(),
+        comUsd: z.number(),
+        totalVenta: z.number(),
+        diferencia: z.number(),
+        date: z.string(),
+      }),
+    )
+    .max(3000)
+    .optional(),
   dryRun: z.boolean().optional(),
   isScheduled: z.boolean().optional(),
   countryOrigin: z.string().max(80).optional(),

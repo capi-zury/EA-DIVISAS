@@ -270,7 +270,19 @@ export interface ImportRequest {
   fileName?: string | null;
   sheetId?: string | null;
   mapping?: Record<string, string>;
-  rows: Record<string, unknown>[];
+  rows?: Record<string, unknown>[];
+  estadoCuenta?: {
+    client: string;
+    beneficiary: string;
+    usd: number;
+    tcVenta: number;
+    tcCompra: number;
+    comPct: number;
+    comUsd: number;
+    totalVenta: number;
+    diferencia: number;
+    date: string;
+  }[];
   dryRun?: boolean;
   isScheduled?: boolean;
   countryOrigin?: string;

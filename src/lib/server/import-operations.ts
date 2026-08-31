@@ -21,6 +21,8 @@ import {
   normalizeRows,
 } from '../import/transfer-import.ts';
 import type { ColumnMapping, NormalizedTransferRow, RawRow } from '../import/transfer-import.ts';
+import { ecImportKey, ecToTransferPayload } from '../import/estado-cuenta.ts';
+import type { EcPago } from '../import/estado-cuenta.ts';
 import { getCallerProfile, getCallingUser, supabaseAdmin } from './supabase.ts';
 import { importOperationsRequestSchema } from './schemas.ts';
 import { fail, ok, type ServerRequest, type ServerResponse } from './types.ts';
@@ -60,6 +62,11 @@ export async function handleImportOperations(req: ServerRequest): Promise<Server
 
   const admin = supabaseAdmin(req.env);
   const dryRun = payload.dryRun === true;
+
+  // ---- Ruta "estado de cuenta" (formato libro mayor, una hoja por cliente) ----
+  if (payload.estadoCuenta && payload.estadoCuenta.length) {
+    return handleEstadoCuenta(admin, user.id, payload.estadoCuenta, dryRun);
+  }
 
   // ---- Mapeo de columnas ----
   const headers = payload.rows.length ? Object.keys(payload.rows[0] as RawRow) : [];
@@ -223,6 +230,129 @@ export async function handleImportOperations(req: ServerRequest): Promise<Server
       ready,
       newClients: newClientKeys.length,
     },
+    results,
+  });
+}
+
+// ---------- Estado de cuenta (libro mayor por cliente) ----------
+
+type Admin = ReturnType<typeof supabaseAdmin>;
+
+async function handleEstadoCuenta(
+  admin: Admin,
+  userId: string,
+  pagos: EcPago[],
+  dryRun: boolean,
+): Promise<ServerResponse> {
+  // dedup dentro del propio archivo
+  const byKey = new Map<string, EcPago>();
+  for (const p of pagos) if (!byKey.has(ecImportKey(p))) byKey.set(ecImportKey(p), p);
+  const unique = [...byKey.values()];
+
+  // ¿cuáles ya existen?
+  const existing = new Set<string>();
+  {
+    const { data, error } = await admin
+      .from('operations')
+      .select('import_key')
+      .eq('module', 'transferencia')
+      .not('import_key', 'is', null);
+    if (error) return fail(500, 'No se pudieron leer las operaciones existentes.', error.message);
+    for (const r of data ?? []) existing.add(r.import_key as string);
+  }
+
+  const nuevos = unique.filter((p) => !existing.has(ecImportKey(p)));
+  const yaRegistradas = unique.length - nuevos.length;
+
+  // clientes: match por nombre normalizado, crea los que falten
+  const clientIdByKey = new Map<string, string>();
+  {
+    const { data, error } = await admin.from('clients').select('id, name');
+    if (error) return fail(500, 'No se pudieron leer los clientes.', error.message);
+    for (const c of data ?? []) clientIdByKey.set(normalizeKey(c.name), c.id as string);
+  }
+  const nombresNuevos = [...new Set(nuevos.map((p) => p.client).filter((n) => n && !clientIdByKey.has(normalizeKey(n))))];
+
+  if (dryRun) {
+    return ok({
+      batchId: null,
+      dryRun: true,
+      summary: {
+        total: unique.length,
+        created: 0,
+        skipped: yaRegistradas,
+        errors: 0,
+        ready: nuevos.length,
+        newClients: nombresNuevos.length,
+      },
+      results: nuevos.slice(0, 200).map((p, i) => ({
+        row: i + 1,
+        status: 'ready' as const,
+        clientName: p.client,
+        willCreateClient: nombresNuevos.includes(p.client),
+        amountUsd: p.usd,
+        opStatus: 'completada',
+      })),
+    });
+  }
+
+  if (!nuevos.length) {
+    return ok({ batchId: null, dryRun: false, summary: { total: unique.length, created: 0, skipped: yaRegistradas, errors: 0, ready: 0, newClients: 0 }, results: [] });
+  }
+
+  for (const name of nombresNuevos) {
+    const { data } = await admin
+      .from('clients')
+      .insert({ name, notes: 'Alta automática por importación de transferencias.' })
+      .select('id, name')
+      .single();
+    if (data) clientIdByKey.set(normalizeKey(data.name), data.id as string);
+  }
+
+  const { data: batch, error: batchErr } = await admin
+    .from('import_batches')
+    .insert({ source: 'excel', file_name: 'estado de cuenta', triggered_by: userId })
+    .select('id')
+    .single();
+  if (batchErr) return fail(500, 'No se pudo crear el lote de importación.', batchErr.message);
+  const batchId = batch.id as string;
+
+  let created = 0;
+  let errors = 0;
+  const results: RowResult[] = [];
+  for (const p of nuevos) {
+    const { header, details } = ecToTransferPayload(p, {
+      createdBy: userId,
+      clientId: p.client ? clientIdByKey.get(normalizeKey(p.client)) ?? null : null,
+      importBatchId: batchId,
+    });
+    const { data, error } = await admin.rpc('create_transfer_operation', { p_header: header, p_details: details });
+    if (error) {
+      errors++;
+      results.push({ row: results.length + 1, status: 'error', clientName: p.client, message: error.message });
+    } else {
+      created++;
+      existing.add(ecImportKey(p));
+      results.push({
+        row: results.length + 1,
+        status: 'created',
+        folio: (data as { folio: string }).folio,
+        clientName: p.client,
+        amountUsd: p.usd,
+        opStatus: 'completada',
+      });
+    }
+  }
+
+  await admin
+    .from('import_batches')
+    .update({ total_rows: unique.length, created_count: created, skipped_count: yaRegistradas, error_count: errors, results, finished_at: new Date().toISOString() })
+    .eq('id', batchId);
+
+  return ok({
+    batchId,
+    dryRun: false,
+    summary: { total: unique.length, created, skipped: yaRegistradas, errors, ready: 0, newClients: nombresNuevos.length },
     results,
   });
 }
