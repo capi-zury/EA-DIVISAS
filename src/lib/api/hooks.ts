@@ -215,8 +215,11 @@ export function useOperations(module: 'transferencia' | 'cripto' | 'efectivo') {
         .from('operations')
         .select(`*, clients(name), ${MODULE_DETAIL_TABLE[module]}`)
         .eq('module', module)
+        // por fecha de la operación (la más reciente arriba); created_at solo
+        // desempata cuando dos operaciones tienen la misma fecha.
+        .order('operation_date', { ascending: false })
         .order('created_at', { ascending: false })
-        .limit(200);
+        .limit(2000);
       if (error) throw error;
       return data;
     },
