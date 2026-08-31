@@ -282,9 +282,10 @@ export function TransferImportDialog({ onClose }: { onClose: () => void }) {
       {step === 'upload' && (
         <div>
           <p style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 14 }}>
-            Sube un archivo <strong>Excel (.xlsx)</strong> o <strong>CSV</strong> con tus transferencias. Puede tener varias hojas
-            y filas de título arriba de los encabezados — en el siguiente paso eliges cuál es cuál. El sistema solo lee el
-            archivo, no lo modifica.
+            Sube tu <strong>estado de cuenta</strong> (una hoja por cliente) o cualquier <strong>Excel/CSV</strong> de
+            transferencias. Si es el estado de cuenta, el sistema lo reconoce solo y <strong>registra únicamente las
+            operaciones nuevas</strong> — las que ya están se omiten. Puedes volver a subir el mismo archivo cuando quieras.
+            Solo se lee, no se modifica.
           </p>
           <input ref={fileInput} type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} style={{ display: 'none' }} />
           <button className="btn btn-primary" onClick={() => fileInput.current?.click()}>
