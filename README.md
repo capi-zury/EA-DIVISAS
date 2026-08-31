@@ -153,3 +153,4 @@ Este sistema es funcional de punta a punta (auth, RLS, motor de cálculo, los 3 
 
 - **Comprobantes**: bucket privado de Supabase Storage (`attachments`, 15MB por archivo) con políticas RLS calcadas de la tabla `attachments`. Botón "Detalle" en cada operación abre subir/ver/borrar comprobantes (URLs firmadas, nunca públicas).
 - **Editar una operación ya creada**: mismo botón "Detalle" — `super_admin`/`admin` ven el formulario pre-llenado y editable (recalcula con el mismo motor de cálculo antes de guardar); `operador`/`auditor` lo ven en solo lectura. Cambios quedan en `audit_logs` automáticamente (mismos triggers que la creación).
+
