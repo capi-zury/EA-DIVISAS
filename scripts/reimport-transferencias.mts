@@ -21,7 +21,6 @@ import 'dotenv/config';
 import { readFileSync } from 'node:fs';
 import { read, utils } from 'xlsx';
 import { createClient } from '@supabase/supabase-js';
-import { calcTransfer, toDisplayNumber } from '../src/lib/calc-engine';
 import { detectCountry, normalizeKey, parseAmount, parseDate } from '../src/lib/import/transfer-import';
 
 const [estadoPath, jeevesPath] = process.argv.slice(2);
@@ -85,6 +84,9 @@ const jeevesBank = new Map<string, Bank>(); // benefKey|usd -> banco
 interface Pago {
   client: string; sheet: string; row: number;
   beneficiary: string; usd: number; tcVenta: number; tcCompra: number; comPct: number;
+  comUsd: number;      // COM $ del Excel (comisión en pesos)
+  totalVenta: number;  // USD × TC  (columna TOTAL del Excel)
+  diferencia: number;  // ganancia de EA = columna DIFERENCIA del Excel (spread + comisión)
   date: string | null; factura: string | null; obs: string | null; issues: string[];
 }
 const pagos: Pago[] = [];
@@ -115,10 +117,13 @@ const seen = new Set<string>();
 
       // fecha de operación; si no hay, la de cierre. Nunca dejar null:
       // el RPC pondría la fecha de HOY y ensucia el tablero.
-      const date =
+      let date =
         parseDate(ci('FECHA DE OPERACION') >= 0 ? r[ci('FECHA DE OPERACION')] : null) ??
         parseDate(ci('FECHA DE CIERRE') >= 0 ? r[ci('FECHA DE CIERRE')] : null);
       if (!date) continue; // sin ninguna fecha → no se puede ubicar en el tiempo, se omite
+      // typo de año (p.ej. 7/28/27 → 2027): nada debe estar en el futuro.
+      const thisYear = new Date().getFullYear();
+      if (Number(date.slice(0, 4)) > thisYear) date = `${thisYear}${date.slice(4)}`;
       const dedupKey = `${benefKey(nombre)}|${Math.round(usd * 100)}|${date}`;
       if (seen.has(dedupKey)) continue;
       seen.add(dedupKey);
@@ -129,9 +134,27 @@ const seen = new Set<string>();
       const issues: string[] = [];
       if (comPct > 0.06 || comPct < 0) { issues.push(`COM% raro (${comPct}) → 0`); comPct = 0; }
 
+      // Números que el Excel YA calculó — se copian tal cual (no se recalcula
+      // nada aquí, para que la app no arroje cifras distintas al Excel).
+      const totalVenta = Math.round(usd * tcVenta * 10000) / 10000; // = columna TOTAL
+      const idxDif = [ci('DIFERENCIA'), ci('DIF DE TC VENTA Y TC COMPRA')].find((x) => x >= 0) ?? -1;
+      const idxCom = ci('COM $');
+      let comUsd = idxCom >= 0 ? (parseAmount(r[idxCom]) ?? 0) : 0;
+      if (!comUsd && comPct) comUsd = Math.round(totalVenta * comPct * 10000) / 10000;
+      let diferencia = idxDif >= 0 ? (parseAmount(r[idxDif]) ?? NaN) : NaN;
+      const fallbackDif = Math.round((usd * (tcVenta - tcCompra) + comUsd) * 10000) / 10000;
+      // si la columna DIFERENCIA viene sin TC COMPRA restado, trae el monto
+      // completo (no la ganancia). Una ganancia real es < 20% del TOTAL.
+      if (!Number.isFinite(diferencia) || Math.abs(diferencia) > totalVenta * 0.2) {
+        if (Number.isFinite(diferencia) && Math.abs(diferencia) > totalVenta * 0.2) {
+          issues.push(`DIFERENCIA del Excel fuera de rango (${Math.round(diferencia)}) → recalculada`);
+        }
+        diferencia = fallbackDif;
+      }
+
       pagos.push({
         client, sheet: sheetName, row: i + 1,
-        beneficiary: nombre, usd, tcVenta, tcCompra, comPct, date,
+        beneficiary: nombre, usd, tcVenta, tcCompra, comPct, comUsd, totalVenta, diferencia, date,
         factura: String(r[ci('FACTURA')] ?? '').trim() || null,
         obs: String(r[ci('OBSERVACIONES')] ?? '').trim() || null,
         issues,
@@ -173,8 +196,7 @@ let conBanco = 0;
 const clientesNuevosSet = new Set<string>();
 for (const p of pagos) {
   if (!clientId.has(normalizeKey(p.client))) clientesNuevosSet.add(p.client);
-  const calc = calcTransfer({ amountSent: p.usd, buyRate: p.tcCompra, sellRate: p.tcVenta, commissionPercent: p.comPct * 100 });
-  utilTotal += toDisplayNumber(calc.netProfit);
+  utilTotal += p.diferencia; // ganancia = columna DIFERENCIA del Excel, tal cual
   if (jeevesBank.has(`${benefKey(p.beneficiary)}|${Math.round(p.usd * 100)}`)) conBanco++;
 }
 
@@ -187,10 +209,14 @@ console.log(`  clientes nuevos a crear:                ${clientesNuevosSet.size}
 console.log(`  con datos bancarios de JEEVES:          ${conBanco}`);
 console.log(`  con COM% inválido (se deja en 0):       ${pagos.filter((p) => p.issues.length).length}`);
 console.log(`  utilidad total estimada (MXN):          ${utilTotal.toLocaleString('es-MX', { maximumFractionDigits: 2 })}`);
-console.log('\nmuestra:');
+console.log(`  filas con DIFERENCIA recalculada:       ${pagos.filter((p) => p.issues.some((x) => x.includes('DIFERENCIA'))).length}`);
+console.log('\nmuestra (util = columna DIFERENCIA del Excel):');
 for (const p of pagos.slice(0, 6)) {
-  const calc = calcTransfer({ amountSent: p.usd, buyRate: p.tcCompra, sellRate: p.tcVenta, commissionPercent: p.comPct * 100 });
-  console.log(`  ${p.client} → ${p.beneficiary.slice(0, 28)} | ${p.usd} USD | TCv ${p.tcVenta} TCc ${p.tcCompra} COM ${(p.comPct * 100).toFixed(2)}% | util ${toDisplayNumber(calc.netProfit).toLocaleString('es-MX')}`);
+  console.log(`  ${p.client} → ${p.beneficiary.slice(0, 26)} | ${p.usd} USD | TCv ${p.tcVenta} TCc ${p.tcCompra} | COM$ ${p.comUsd.toFixed(2)} | util ${p.diferencia.toLocaleString('es-MX')}`);
+}
+console.log('\ntop 5 utilidades (revisar que no haya locuras):');
+for (const p of [...pagos].sort((a, b) => b.diferencia - a.diferencia).slice(0, 5)) {
+  console.log(`  ${p.diferencia.toLocaleString('es-MX')} | ${p.client} → ${p.beneficiary.slice(0, 26)} | ${p.usd} USD`);
 }
 
 if (!APPLY) {
@@ -229,11 +255,19 @@ for (const name of clientesNuevosSet) {
   if (data) clientId.set(normalizeKey(data.name), data.id as string);
 }
 
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
 let ok = 0, fail = 0;
 for (const p of pagos) {
-  const calc = calcTransfer({ amountSent: p.usd, buyRate: p.tcCompra, sellRate: p.tcVenta, commissionPercent: p.comPct * 100 });
   const bank = jeevesBank.get(`${benefKey(p.beneficiary)}|${Math.round(p.usd * 100)}`) ?? {};
   const dest = detectCountry(bank.dirBenef, bank.dirBanco, p.beneficiary) ?? 'Estados Unidos';
+
+  // Todo copiado del Excel — sin recalcular. spread = DIFERENCIA − COM$ para
+  // que spread + comisión = utilidad siempre cuadre.
+  const util = r2(p.diferencia);
+  const comision = r2(p.comUsd);
+  const spread = r2(p.diferencia - p.comUsd);
+  const margin = p.totalVenta ? r2((util / p.totalVenta) * 100) : 0;
 
   const header = {
     client_id: clientId.get(normalizeKey(p.client)) ?? null,
@@ -248,22 +282,22 @@ for (const p of pagos) {
     // borrador del estado de cuenta) y se colapsan a una.
     import_key: keyOf(p),
     import_batch_id: batchId,
-    gross_revenue: toDisplayNumber(calc.grossRevenue),
-    total_costs: toDisplayNumber(calc.totalCosts),
-    gross_profit: toDisplayNumber(calc.grossProfit),
-    net_profit: toDisplayNumber(calc.netProfit),
-    margin_percent: toDisplayNumber(calc.marginPercent),
+    gross_revenue: util,
+    total_costs: 0,
+    gross_profit: util,
+    net_profit: util,
+    margin_percent: margin,
   };
   const details = {
     country_origin: 'México', country_destination: dest,
     currency_origin: 'USD', currency_destination: 'MXN',
     amount_sent: p.usd,
-    amount_received: toDisplayNumber(calc.amountReceived),
+    amount_received: r2(p.totalVenta),
     exchange_rate_applied: p.tcVenta, buy_rate: p.tcCompra, sell_rate: p.tcVenta,
-    commission_fixed: 0, commission_percent: p.comPct * 100,
-    commission_amount: toDisplayNumber(calc.commissionAmount),
+    commission_fixed: comision, commission_percent: p.comPct * 100,
+    commission_amount: comision,
     provider_cost: 0, bank_cost: 0, additional_cost: 0,
-    spread_revenue: toDisplayNumber(calc.spreadRevenue),
+    spread_revenue: spread,
     promotor: bank.promotor ?? null,
     beneficiary_name: p.beneficiary,
     beneficiary_account: bank.cuenta ?? null,
