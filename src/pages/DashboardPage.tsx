@@ -56,6 +56,9 @@ export function DashboardPage() {
     const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     return {
       today: toLocalDateString(now),
+      // límite superior: mañana. Nada con fecha futura debe contar en
+      // "hoy / semana / mes / año" (p. ej. una fila con la fecha mal capturada).
+      tomorrow: toLocalDateString(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)),
       weekStart: toLocalDateString(startOfWeek(now)),
       monthStart: toLocalDateString(monthStart),
       prevMonthStart: toLocalDateString(prevMonthStart),
@@ -374,11 +377,13 @@ function LiveClock() {
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
+  const hora = now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const fecha = now.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
   return (
     <div className="dash-clock" style={{ textAlign: 'right' }}>
-      {now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+      {hora}
       <br />
-      <small>{now.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}</small>
+      <small>{fecha.charAt(0).toUpperCase() + fecha.slice(1)}</small>
     </div>
   );
 }

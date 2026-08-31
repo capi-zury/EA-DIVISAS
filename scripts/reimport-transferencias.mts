@@ -9,8 +9,13 @@
  *          (spread cambiario + comisión al cliente; nada más se resta)
  *
  * Uso:
- *   npx tsx scripts/reimport-transferencias.mts <estado_cuenta.xlsx> <jeeves.xlsx>            (prueba)
- *   npx tsx scripts/reimport-transferencias.mts <estado_cuenta.xlsx> <jeeves.xlsx> --apply    (borra las 433 y carga)
+ *   npx tsx scripts/reimport-transferencias.mts <estado.xlsx> <jeeves.xlsx>                 (prueba)
+ *   npx tsx scripts/reimport-transferencias.mts <estado.xlsx> <jeeves.xlsx> --apply         (BORRA lo importado y recarga todo)
+ *   npx tsx scripts/reimport-transferencias.mts <estado.xlsx> <jeeves.xlsx> --incremental   (NO borra: registra solo los pagos nuevos)
+ *
+ * --incremental es para las siguientes veces: subes el mismo Excel con
+ * filas nuevas y solo se dan de alta las que aún no existen (por su
+ * import_key: beneficiario + monto + fecha + cliente).
  */
 import 'dotenv/config';
 import { readFileSync } from 'node:fs';
@@ -20,7 +25,8 @@ import { calcTransfer, toDisplayNumber } from '../src/lib/calc-engine';
 import { detectCountry, normalizeKey, parseAmount, parseDate } from '../src/lib/import/transfer-import';
 
 const [estadoPath, jeevesPath] = process.argv.slice(2);
-const APPLY = process.argv.includes('--apply');
+const INCREMENTAL = process.argv.includes('--incremental');
+const APPLY = process.argv.includes('--apply') || INCREMENTAL;
 if (!estadoPath || !jeevesPath) {
   console.error('Uso: npx tsx scripts/reimport-transferencias.mts <estado_cuenta.xlsx> <jeeves.xlsx> [--apply]');
   process.exit(1);
@@ -129,12 +135,37 @@ const seen = new Set<string>();
   }
 }
 
+// llave natural de cada pago (idempotencia)
+const keyOf = (p: Pago) =>
+  `h:${normalizeKey(p.beneficiary)}|${Math.round(p.usd * 100)}|${p.date ?? ''}|${normalizeKey(p.client)}`;
+
 // ---------- 3) resumen / prueba ----------
+const { data: existingClients } = await db.from('clients').select('id, name');
+const clientId = new Map((existingClients ?? []).map((c) => [normalizeKey(c.name), c.id as string]));
+
+// en modo incremental, quitar los pagos que ya están registrados
+let yaExisten = 0;
+if (INCREMENTAL) {
+  // traer TODAS las llaves de transferencias importadas (son pocas) y comparar
+  // en memoria — evita el .in() de PostgREST, que se rompe con las comas de
+  // los nombres de beneficiario.
+  const have = new Set<string>();
+  const { data } = await db
+    .from('operations')
+    .select('import_key')
+    .eq('module', 'transferencia')
+    .not('import_key', 'is', null);
+  for (const r of data ?? []) have.add(r.import_key as string);
+
+  const nuevos = pagos.filter((p) => !have.has(keyOf(p)));
+  yaExisten = pagos.length - nuevos.length;
+  pagos.length = 0;
+  pagos.push(...nuevos);
+}
+
 let utilTotal = 0;
 let conBanco = 0;
 const clientesNuevosSet = new Set<string>();
-const { data: existingClients } = await db.from('clients').select('id, name');
-const clientId = new Map((existingClients ?? []).map((c) => [normalizeKey(c.name), c.id as string]));
 for (const p of pagos) {
   if (!clientId.has(normalizeKey(p.client))) clientesNuevosSet.add(p.client);
   const calc = calcTransfer({ amountSent: p.usd, buyRate: p.tcCompra, sellRate: p.tcVenta, commissionPercent: p.comPct * 100 });
@@ -142,7 +173,11 @@ for (const p of pagos) {
   if (jeevesBank.has(`${benefKey(p.beneficiary)}|${Math.round(p.usd * 100)}`)) conBanco++;
 }
 
-console.log(`Pagos distintos en el estado de cuenta:   ${pagos.length}`);
+console.log(`Pagos distintos en el estado de cuenta:   ${pagos.length + yaExisten}`);
+if (INCREMENTAL) {
+  console.log(`  ya registrados (se omiten):            ${yaExisten}`);
+  console.log(`  NUEVOS a registrar:                    ${pagos.length}`);
+}
 console.log(`  clientes nuevos a crear:                ${clientesNuevosSet.size}`);
 console.log(`  con datos bancarios de JEEVES:          ${conBanco}`);
 console.log(`  con COM% inválido (se deja en 0):       ${pagos.filter((p) => p.issues.length).length}`);
@@ -154,21 +189,27 @@ for (const p of pagos.slice(0, 6)) {
 }
 
 if (!APPLY) {
-  console.log('\n(prueba — corre con --apply para BORRAR las 433 actuales y cargar estas)');
+  console.log('\n(prueba — --apply borra lo importado y recarga todo · --incremental solo agrega lo nuevo)');
+  process.exit(0);
+}
+if (INCREMENTAL && pagos.length === 0) {
+  console.log('\nNada nuevo que registrar.');
   process.exit(0);
 }
 
-// ---------- 4) APPLY: borrar importadas anteriores + cargar ----------
-console.log('\n--- APPLY ---');
+// ---------- 4) APPLY ----------
+console.log(`\n--- ${INCREMENTAL ? 'INCREMENTAL' : 'APPLY (reemplazo total)'} ---`);
 const { data: prof } = await db.from('profiles').select('id').eq('role', 'super_admin').limit(1).single();
 const createdBy = prof!.id as string;
 
-const { data: toDelete } = await db.from('operations').select('id').eq('module', 'transferencia').not('import_source', 'is', null);
-console.log(`Borrando ${toDelete?.length ?? 0} operaciones importadas anteriores…`);
-for (let i = 0; i < (toDelete ?? []).length; i += 100) {
-  const ids = (toDelete ?? []).slice(i, i + 100).map((o) => o.id);
-  const { error } = await db.from('operations').delete().in('id', ids);
-  if (error) throw error;
+if (!INCREMENTAL) {
+  const { data: toDelete } = await db.from('operations').select('id').eq('module', 'transferencia').not('import_source', 'is', null);
+  console.log(`Borrando ${toDelete?.length ?? 0} operaciones importadas anteriores…`);
+  for (let i = 0; i < (toDelete ?? []).length; i += 100) {
+    const ids = (toDelete ?? []).slice(i, i + 100).map((o) => o.id);
+    const { error } = await db.from('operations').delete().in('id', ids);
+    if (error) throw error;
+  }
 }
 
 const { data: batch } = await db
@@ -200,7 +241,7 @@ for (const p of pagos) {
     // llave natural: beneficiario + monto + fecha + cliente. Dos filas con
     // todo idéntico son el mismo pago (aparece repetido en las hojas
     // borrador del estado de cuenta) y se colapsan a una.
-    import_key: `h:${normalizeKey(p.beneficiary)}|${Math.round(p.usd * 100)}|${p.date ?? ''}|${normalizeKey(p.client)}`,
+    import_key: keyOf(p),
     import_batch_id: batchId,
     gross_revenue: toDisplayNumber(calc.grossRevenue),
     total_costs: toDisplayNumber(calc.totalCosts),
