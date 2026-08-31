@@ -8,7 +8,7 @@
  * se puede cobrar una comisión explícita (fija y/o porcentual). Los costos
  * de proveedor/banco/adicionales se restan para llegar a la utilidad neta.
  */
-import { money, roundFiat, pctFactor, type Money, type MoneyInput } from './money';
+import { money, roundFiat, pctFactor, type Money, type MoneyInput } from './money.ts';
 
 export interface TransferInput {
   amountSent: MoneyInput;

@@ -4,8 +4,8 @@
  * importar SIEMPRE desde aquí — nunca reimplementar una fórmula en un
  * componente o endpoint distinto.
  */
-export * from './money';
-export * from './transfers';
-export * from './crypto';
-export * from './cash';
-export * from './reconciliation';
+export * from './money.ts';
+export * from './transfers.ts';
+export * from './crypto.ts';
+export * from './cash.ts';
+export * from './reconciliation.ts';

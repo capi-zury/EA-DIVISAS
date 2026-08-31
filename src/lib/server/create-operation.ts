@@ -12,10 +12,10 @@
  * Agnóstico de plataforma: lo invocan los adaptadores de Cloudflare Pages
  * (functions/api/create-operation.ts) y Netlify (netlify/functions/...).
  */
-import { calcCash, calcCrypto, calcTransfer, toDisplayNumber } from '../calc-engine';
-import { getCallerProfile, getCallingUser, supabaseAdmin } from './supabase';
-import { createOperationRequestSchema } from './schemas';
-import { created, fail, type ServerRequest, type ServerResponse } from './types';
+import { calcCash, calcCrypto, calcTransfer, toDisplayNumber } from '../calc-engine/index.ts';
+import { getCallerProfile, getCallingUser, supabaseAdmin } from './supabase.ts';
+import { createOperationRequestSchema } from './schemas.ts';
+import { created, fail, type ServerRequest, type ServerResponse } from './types.ts';
 
 const ALLOWED_ROLES = new Set(['super_admin', 'admin', 'operador']);
 

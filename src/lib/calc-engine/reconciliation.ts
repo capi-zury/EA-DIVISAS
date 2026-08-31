@@ -1,7 +1,7 @@
 /**
  * Motor de cálculo — Conciliación (esperado vs. real).
  */
-import { money, roundFiat, type Money, type MoneyInput } from './money';
+import { money, roundFiat, type Money, type MoneyInput } from './money.ts';
 
 export type ReconciliationStatus = 'conciliado' | 'diferencia' | 'pendiente_revision';
 

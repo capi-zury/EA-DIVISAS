@@ -13,7 +13,7 @@
  * resto es la ganancia real de EA Divisas. Si no hay proveedor (o su %
  * queda vacío/cero), el 100% de la comisión es ganancia de la empresa.
  */
-import { money, roundFiat, pctFactor, type Money, type MoneyInput } from './money';
+import { money, roundFiat, pctFactor, type Money, type MoneyInput } from './money.ts';
 
 export interface CashInput {
   quantity: MoneyInput;

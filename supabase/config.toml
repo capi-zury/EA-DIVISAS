@@ -1,13 +1,20 @@
 # Config del proyecto Supabase. Lo relevante aquí son las Edge Functions:
 # los 3 endpoints privilegiados del sistema (crear operación, alta de
 # usuarios, importar transferencias) corren dentro de Supabase.
+#
+# import_map: mapea los paquetes npm (decimal.js, zod, supabase-js) que usa
+# la lógica compartida en src/lib/**. Los imports relativos de esa lógica
+# llevan extensión .ts explícita para que el bundler de Supabase los resuelva.
 project_id = "cwyrsqhoqieaamfgbuyb"
 
 [functions.create-operation]
 verify_jwt = true
+import_map = "./functions/import_map.json"
 
 [functions.admin-users]
 verify_jwt = true
+import_map = "./functions/import_map.json"
 
 [functions.import-operations]
 verify_jwt = true
+import_map = "./functions/import_map.json"

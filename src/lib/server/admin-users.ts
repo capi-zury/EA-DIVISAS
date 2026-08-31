@@ -13,9 +13,9 @@
  * El cambio de rol / activar-desactivar de un usuario que YA existe sigue
  * yendo directo por RLS (policy profiles_write_super_admin), no por aquí.
  */
-import { getCallerProfile, getCallingUser, supabaseAdmin } from './supabase';
-import { createUserRequestSchema } from './schemas';
-import { created, fail, type ServerRequest, type ServerResponse } from './types';
+import { getCallerProfile, getCallingUser, supabaseAdmin } from './supabase.ts';
+import { createUserRequestSchema } from './schemas.ts';
+import { created, fail, type ServerRequest, type ServerResponse } from './types.ts';
 
 export async function handleAdminUsers(req: ServerRequest): Promise<ServerResponse> {
   if (req.method !== 'POST') return fail(405, 'Método no permitido.');

@@ -4,7 +4,7 @@
  * frontend en src/ que corre en el navegador.
  */
 import { createClient } from '@supabase/supabase-js';
-import type { ServerEnv } from './types';
+import type { ServerEnv } from './types.ts';
 
 export type ProfileRole = 'super_admin' | 'admin' | 'operador' | 'auditor';
 

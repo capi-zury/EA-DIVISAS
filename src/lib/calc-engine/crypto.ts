@@ -15,7 +15,7 @@
  * en el precio, la comisión es un cobro explícito. Confundirlos rompe la
  * trazabilidad que pide el negocio.
  */
-import { money, roundFiat, roundCrypto, pctFactor, type Money, type MoneyInput } from './money';
+import { money, roundFiat, roundCrypto, pctFactor, type Money, type MoneyInput } from './money.ts';
 
 export interface CryptoInput {
   quantity: MoneyInput;

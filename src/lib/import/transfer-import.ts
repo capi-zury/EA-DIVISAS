@@ -13,10 +13,10 @@
  * guarda SIN spread (buy_rate = sell_rate = 1, principal en USD) y el TC y
  * el equivalente en MXN quedan solo como referencia.
  */
-import { calcTransfer, toDisplayNumber } from '../calc-engine';
-import type { TransferResult } from '../calc-engine';
-import { OPERATION_STATUSES } from '../domain/operation-status';
-import type { OperationStatus } from '../domain/operation-status';
+import { calcTransfer, toDisplayNumber } from '../calc-engine/index.ts';
+import type { TransferResult } from '../calc-engine/index.ts';
+import { OPERATION_STATUSES } from '../domain/operation-status.ts';
+import type { OperationStatus } from '../domain/operation-status.ts';
 
 // ---------- Campos canónicos de importación ----------
 

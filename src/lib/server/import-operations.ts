@@ -19,11 +19,11 @@ import {
   buildCreatePayload,
   normalizeKey,
   normalizeRows,
-} from '../import/transfer-import';
-import type { ColumnMapping, NormalizedTransferRow, RawRow } from '../import/transfer-import';
-import { getCallerProfile, getCallingUser, supabaseAdmin } from './supabase';
-import { importOperationsRequestSchema } from './schemas';
-import { fail, ok, type ServerRequest, type ServerResponse } from './types';
+} from '../import/transfer-import.ts';
+import type { ColumnMapping, NormalizedTransferRow, RawRow } from '../import/transfer-import.ts';
+import { getCallerProfile, getCallingUser, supabaseAdmin } from './supabase.ts';
+import { importOperationsRequestSchema } from './schemas.ts';
+import { fail, ok, type ServerRequest, type ServerResponse } from './types.ts';
 
 const ALLOWED_ROLES = new Set(['super_admin', 'admin', 'operador']);
 
