@@ -1,0 +1,29 @@
+# Trae el "ESTADO DE CUENTA CLIENTES" de OneDrive/SharePoint todos los días y
+# registra los pagos nuevos (misma lógica y deduplicación que "Importar de
+# Excel" en la app — ver scripts/sync-estado-cuenta.mts).
+#
+# Requiere el secret ESTADO_CUENTA_URL con el link "Cualquiera con el
+# vínculo" del archivo (si es "Personas de la organización", SharePoint pide
+# una sesión de Microsoft 365 que este workflow no puede dar y falla con 403).
+name: Sincronizar estado de cuenta
+
+on:
+  schedule:
+    - cron: '0 13 * * *' # 07:00 hora de Ciudad de México (UTC-6, sin horario de verano)
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run sync:estado-cuenta -- --apply
+        env:
+          ESTADO_CUENTA_URL: ${{ secrets.ESTADO_CUENTA_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

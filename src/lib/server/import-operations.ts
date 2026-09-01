@@ -238,7 +238,7 @@ export async function handleImportOperations(req: ServerRequest): Promise<Server
 
 type Admin = ReturnType<typeof supabaseAdmin>;
 
-async function handleEstadoCuenta(
+export async function handleEstadoCuenta(
   admin: Admin,
   userId: string,
   pagos: EcPago[],
