@@ -89,8 +89,14 @@ export function DashboardPage() {
     };
   }, [daily, ranges]);
 
+  // Al arrancar un mes nuevo (p. ej. el día 1) el mes calendario todavía no
+  // tiene operaciones: comparar 0 contra el mes anterior daría un "−100 %"
+  // engañoso — no es una caída, es que aún no entra nada. En ese caso no hay
+  // delta que mostrar.
   const monthDelta =
-    totals.prevMonth.profit === 0 ? null : ((totals.month.profit - totals.prevMonth.profit) / Math.abs(totals.prevMonth.profit)) * 100;
+    totals.month.operations === 0 || totals.prevMonth.profit === 0
+      ? null
+      : ((totals.month.profit - totals.prevMonth.profit) / Math.abs(totals.prevMonth.profit)) * 100;
 
   const moduleCards = useMemo(() => {
     const rows = moduleTotals ?? [];
@@ -180,7 +186,9 @@ export function DashboardPage() {
           <div className={`hero-value ${totals.month.profit >= 0 ? 'pos' : 'neg'}`}>{fmtMoney(totals.month.profit)}</div>
           <div className="hero-sub" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             {monthDelta === null ? (
-              <span className="delta-chip flat">— sin mes previo</span>
+              <span className="delta-chip flat">
+                {totals.month.operations === 0 ? '— sin operaciones este mes aún' : '— sin mes previo'}
+              </span>
             ) : (
               <span className={`delta-chip ${monthDelta > 0.5 ? 'up' : monthDelta < -0.5 ? 'down' : 'flat'}`}>
                 {monthDelta > 0 ? '▲' : monthDelta < 0 ? '▼' : '='} {fmtNumber(Math.abs(monthDelta), 1)}% vs mes anterior
