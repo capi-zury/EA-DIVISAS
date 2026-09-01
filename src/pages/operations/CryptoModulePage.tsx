@@ -271,6 +271,7 @@ function CryptoForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
   return (
     <form onSubmit={handleSubmit}>
       <fieldset disabled={readOnly} style={{ border: 'none', padding: 0, margin: 0 }}>
+      <h3 className="form-section-title">¿Qué operaste?</h3>
       <div className="grid-2">
         <div className="field">
           <label>Cliente</label>
@@ -332,11 +333,10 @@ function CryptoForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
           <input required type="number" step="any" placeholder="ej. 10000" value={form.quantity} onChange={set('quantity')} />
           <Hint>La cantidad de la cripto que se compró o vendió (no el dinero en pesos).</Hint>
         </div>
-        <div className="field">
-          <label>Precio de referencia (opcional)</label>
-          <input type="number" step="any" placeholder="se usa el precio de compra si lo dejas vacío" value={form.marketPrice} onChange={set('marketPrice')} />
-          <Hint>El precio "real" de mercado en ese momento, solo para comparar. Si no lo sabes, déjalo vacío.</Hint>
-        </div>
+      </div>
+
+      <h3 className="form-section-title">Precios</h3>
+      <div className="grid-2">
         <div className="field">
           <label>¿A cuánto la compraste?</label>
           <input required type="number" step="any" placeholder="precio por unidad, en pesos" value={form.buyPrice} onChange={set('buyPrice')} />
@@ -347,47 +347,58 @@ function CryptoForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
           <input required type="number" step="any" placeholder="precio por unidad, en pesos" value={form.sellPrice} onChange={set('sellPrice')} />
           <Hint>Lo que le cobraste al cliente por cada unidad.</Hint>
         </div>
-
         <div className="field">
-          <label>Comisión del exchange al comprar (opcional)</label>
+          <label>Precio de referencia (opcional)</label>
+          <input type="number" step="any" placeholder="se usa el precio de compra si lo dejas vacío" value={form.marketPrice} onChange={set('marketPrice')} />
+          <Hint>El precio "real" de mercado en ese momento, solo para comparar. Si no lo sabes, déjalo vacío.</Hint>
+        </div>
+      </div>
+
+      <h3 className="form-section-title">Comisiones y costos (opcional)</h3>
+      <div className="grid-2">
+        <div className="field">
+          <label>Comisión del exchange al comprar</label>
           <input type="number" step="any" placeholder="0" value={form.providerFeeBuy} onChange={set('providerFeeBuy')} />
           <Hint>Lo que te cobró la plataforma (Bitso, Binance, etc.) por comprar.</Hint>
         </div>
         <div className="field">
-          <label>Comisión del exchange al vender (opcional)</label>
+          <label>Comisión del exchange al vender</label>
           <input type="number" step="any" placeholder="0" value={form.providerFeeSell} onChange={set('providerFeeSell')} />
           <Hint>Lo que te cobró la plataforma por vender.</Hint>
         </div>
         <div className="field">
-          <label>Costo de mover la cripto — "gas" (opcional)</label>
+          <label>Costo de mover la cripto — "gas"</label>
           <input type="number" step="any" placeholder="0" value={form.networkFee} onChange={set('networkFee')} />
           <Hint>Lo que cobra la red (blockchain) por mandar la transacción.</Hint>
         </div>
         <div className="field">
-          <label>Comisión extra que le cobraste al cliente (opcional)</label>
+          <label>Comisión extra que le cobraste al cliente</label>
           <input type="number" step="any" placeholder="0" value={form.customerFeeFixed} onChange={set('customerFeeFixed')} />
           <Hint>Un cobro aparte del precio, si aplicaste alguno.</Hint>
         </div>
+      </div>
 
+      <h3 className="form-section-title">Datos de la transacción (opcional)</h3>
+      <div className="grid-2">
         <div className="field">
-          <label>TX Hash (opcional)</label>
+          <label>TX Hash</label>
           <input value={form.txHash} onChange={set('txHash')} placeholder="el identificador de la transacción en la blockchain" />
         </div>
         <div className="field">
-          <label>Referencia (opcional)</label>
+          <label>Referencia</label>
           <input value={form.reference} onChange={set('reference')} placeholder="folio interno, número de orden, etc." />
         </div>
         <div className="field">
-          <label>Wallet de donde salió (opcional)</label>
+          <label>Wallet de donde salió</label>
           <input value={form.walletOrigin} onChange={set('walletOrigin')} placeholder="dirección de la wallet" />
         </div>
         <div className="field">
-          <label>Wallet a donde llegó (opcional)</label>
+          <label>Wallet a donde llegó</label>
           <input value={form.walletDestination} onChange={set('walletDestination')} placeholder="dirección de la wallet" />
         </div>
       </div>
 
-      <div className="field">
+      <div className="field" style={{ marginTop: 18 }}>
         <label>Observaciones</label>
         <textarea rows={2} value={form.observations} onChange={set('observations')} />
       </div>
