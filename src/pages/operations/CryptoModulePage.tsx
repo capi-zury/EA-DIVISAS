@@ -177,12 +177,17 @@ function CryptoForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
   // nueva para no abrumar; al editar una ya existente se muestra todo de una.
   const [showExtras, setShowExtras] = useState(isEdit);
 
+  // El recuadro de resultado se recalcula en cada tecla (useMemo sobre `form`).
+  // Siempre devuelve un cálculo — con los campos vacíos tomados como 0 — para que
+  // el usuario vea el número moverse desde el primer dato. `previewReady` marca
+  // cuándo ya hay cantidad y los dos precios, que es lo mínimo para que el número
+  // signifique algo (y lo que exige el submit).
+  const previewReady = !!(form.quantity && form.buyPrice && form.sellPrice);
   const preview = useMemo(() => {
     const n = (v: string) => (v === '' ? 0 : Number(v));
-    if (!form.quantity || !form.buyPrice || !form.sellPrice) return null;
     return calcCrypto({
       quantity: n(form.quantity),
-      marketPrice: n(form.marketPrice || form.buyPrice),
+      marketPrice: n(form.marketPrice || form.buyPrice || form.sellPrice),
       buyPrice: n(form.buyPrice),
       sellPrice: n(form.sellPrice),
       providerFeeBuy: n(form.providerFeeBuy),
@@ -195,7 +200,7 @@ function CryptoForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!preview) return;
+    if (!previewReady) return;
 
     const details = {
       cryptoAssetCode: assetCode,
@@ -344,6 +349,54 @@ function CryptoForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
         </div>
       </div>
 
+      {/* Resultado en vivo: se recalcula con cada tecla para que el usuario vea si le conviene. */}
+      <div
+        className="card card-tight"
+        style={{
+          background: 'var(--navy-850)',
+          border: `1px solid ${
+            previewReady ? (toDisplayNumber(preview.netProfit) >= 0 ? 'var(--green-dim)' : 'var(--red-dim)') : 'var(--border)'
+          }`,
+          margin: '4px 0 16px',
+        }}
+      >
+        <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          Cuánto ganas con esta operación (se calcula solo)
+        </div>
+        {previewReady ? (
+          <>
+            <PreviewRow label="Te pagó el cliente" value={fmtMoney(toDisplayNumber(preview.totalRevenue))} />
+            <PreviewRow label="Te costó (todo incluido)" value={fmtMoney(toDisplayNumber(preview.totalRevenue) - toDisplayNumber(preview.netProfit))} />
+            <PreviewRow
+              label="Ganancia"
+              value={fmtMoney(toDisplayNumber(preview.netProfit))}
+              tone={toDisplayNumber(preview.netProfit) >= 0 ? 'pos' : 'neg'}
+              bold
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: toDisplayNumber(preview.netProfit) >= 0 ? 'var(--green)' : 'var(--red)',
+                }}
+              >
+                {toDisplayNumber(preview.netProfit) > 0
+                  ? '✓ Conviene — ganas dinero'
+                  : toDisplayNumber(preview.netProfit) < 0
+                    ? '✕ No conviene — pierdes dinero'
+                    : 'Ni ganas ni pierdes'}
+              </span>
+              <span style={{ fontSize: 11.5, color: 'var(--text-mute)' }}>margen {fmtPercent(toDisplayNumber(preview.marginPercent))}</span>
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 12.5, color: 'var(--text-mute)' }}>
+            Escribe la cantidad y los dos precios (aquí arriba) y al instante verás cuánto ganas o pierdes.
+          </div>
+        )}
+      </div>
+
       <button
         type="button"
         onClick={() => setShowExtras((v) => !v)}
@@ -424,26 +477,7 @@ function CryptoForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
         </div>
       </div>
 
-      {preview && (
-        <div className="card card-tight" style={{ background: 'var(--navy-850)', margin: '16px 0' }}>
-          <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Cuánto ganas con esta operación (se calcula solo)
-          </div>
-          <PreviewRow label="Te pagó el cliente" value={fmtMoney(toDisplayNumber(preview.totalRevenue))} />
-          <PreviewRow label="Te costó (todo incluido)" value={fmtMoney(toDisplayNumber(preview.totalRevenue) - toDisplayNumber(preview.netProfit))} />
-          <PreviewRow
-            label="Ganancia"
-            value={fmtMoney(toDisplayNumber(preview.netProfit))}
-            tone={toDisplayNumber(preview.netProfit) >= 0 ? 'pos' : 'neg'}
-            bold
-          />
-          <div style={{ fontSize: 11.5, color: 'var(--text-mute)', textAlign: 'right', marginTop: 2 }}>
-            margen {fmtPercent(toDisplayNumber(preview.marginPercent))}
-          </div>
-        </div>
-      )}
-
-      {error && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>{(error as Error).message}</div>}
+      {error &&<div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>{(error as Error).message}</div>}
 
       {readOnly ? (
         <div style={{ fontSize: 12.5, color: 'var(--text-mute)', marginBottom: 12 }}>
