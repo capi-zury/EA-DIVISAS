@@ -356,6 +356,24 @@ function useUpdateOperationRpc(rpcName: 'update_transfer_operation' | 'update_cr
   });
 }
 
+/** Borrado DURO de una operación (RPC divisas.delete_operation, solo super_admin/admin). */
+export function useDeleteOperation(module: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (operationId: string) => {
+      const { error } = await supabase.rpc('delete_operation', { p_operation_id: operationId });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['operations', module] });
+      qc.invalidateQueries({ queryKey: ['operations'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['clients'] });
+      qc.invalidateQueries({ queryKey: ['audit_logs'] });
+    },
+  });
+}
+
 export function useUpdateTransferOperation() {
   return useUpdateOperationRpc('update_transfer_operation', 'transferencia');
 }

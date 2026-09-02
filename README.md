@@ -62,6 +62,8 @@ Row Level Security activo en las 19 tablas de negocio (`supabase/migrations/015_
 
 Cambio de estado controlado por la función `divisas.update_operation_status()` (SQL, `SECURITY DEFINER`), que valida la transición contra la misma máquina de estados que usa el frontend (`src/lib/domain/operation-status.ts` — si cambias una, cambia la otra, están comentadas cruzadamente).
 
+**Corregir** una operación ya creada: `divisas.update_transfer_operation` / `update_crypto_operation` / `update_cash_operation` (migración `026`/`028`), solo `super_admin`/`admin` vía RLS. **Borrar** una operación (borrado duro): `divisas.delete_operation(uuid)` (migración `032`, `SECURITY DEFINER`, valida `super_admin`/`admin`) — revierte a propósito la regla original de `015` ("no se borra, se cancela"); arrastra por cascade el detalle de módulo, el historial de estatus y los adjuntos, y desata las conciliaciones. En la app está en el pie del "Detalle" de cada operación, en los 3 módulos.
+
 ## Variables de entorno
 
 Ver `.env.example`. Nunca commitear `.env` (ya está en `.gitignore`).

@@ -3,6 +3,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { Modal } from '../../components/ui/Modal';
 import { Hint } from '../../components/ui/Hint';
 import { AttachmentsSection } from '../../components/ui/AttachmentsSection';
+import { DeleteOperationButton } from '../../components/operations/DeleteOperationButton';
 import { useClients, useCreateOperation, useCurrencies, useOperations, useProviders, useUpdateCashOperation, useUpdateOperationStatus } from '../../lib/api/hooks';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { fmtDate, fmtMoney, fmtNumber } from '../../lib/format';
@@ -393,6 +394,10 @@ function CashForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
         <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
           <AttachmentsSection operationId={editOp.id} />
         </div>
+      )}
+
+      {isEdit && canEdit && (
+        <DeleteOperationButton operationId={editOp.id} module="efectivo" onDeleted={onDone} />
       )}
     </form>
   );

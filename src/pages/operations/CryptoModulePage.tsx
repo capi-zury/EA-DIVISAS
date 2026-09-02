@@ -3,6 +3,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { Modal } from '../../components/ui/Modal';
 import { Hint } from '../../components/ui/Hint';
 import { AttachmentsSection } from '../../components/ui/AttachmentsSection';
+import { DeleteOperationButton } from '../../components/operations/DeleteOperationButton';
 import {
   useClients,
   useCreateOperation,
@@ -494,6 +495,10 @@ function CryptoForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
         <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
           <AttachmentsSection operationId={editOp.id} />
         </div>
+      )}
+
+      {isEdit && canEdit && (
+        <DeleteOperationButton operationId={editOp.id} module="cripto" onDeleted={onDone} />
       )}
     </form>
   );
