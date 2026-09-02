@@ -16,8 +16,12 @@
  * son idénticos a los que produciría un import nuevo.
  *
  * Uso (Windows: node --use-system-ca por el TLS contra Supabase):
- *   node --use-system-ca --import tsx scripts/reprice-transferencias-importadas.mts            (prueba: solo reporta)
- *   node --use-system-ca --import tsx scripts/reprice-transferencias-importadas.mts -- --apply  (aplica los UPDATE)
+ *   node --use-system-ca --import tsx scripts/reprice-transferencias-importadas.mts
+ *       → prueba: solo reporta cuántas cambian y por cuánto.
+ *   node --use-system-ca --import tsx scripts/reprice-transferencias-importadas.mts -- --apply
+ *       → escribe un respaldo reprice-backup-<fecha>.json y aplica los UPDATE.
+ *   node --use-system-ca --import tsx scripts/reprice-transferencias-importadas.mts -- --revert reprice-backup-<fecha>.json
+ *       → restaura los valores del respaldo (no necesita el Excel).
  *
  * Env (.env):
  *   ESTADO_CUENTA_URL     link "Cualquiera con el vínculo" del .xlsx en SharePoint
@@ -25,7 +29,7 @@
  *   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
  */
 import 'dotenv/config';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { read, utils } from 'xlsx';
 import { createClient } from '@supabase/supabase-js';
 import {
@@ -37,6 +41,8 @@ import {
 } from '../src/lib/import/estado-cuenta';
 
 const APPLY = process.argv.includes('--apply');
+const revertIdx = process.argv.indexOf('--revert');
+const REVERT_FILE = revertIdx >= 0 ? process.argv[revertIdx + 1] : null;
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
@@ -72,6 +78,34 @@ const db = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_
   auth: { persistSession: false },
 });
 
+// ---------- REVERT: restaurar desde un respaldo reprice-backup-*.json ----------
+if (REVERT_FILE) {
+  interface BackupRow {
+    id: string;
+    folio: string;
+    operations: Record<string, number | null>;
+    international_transfers: Record<string, number | null> | null;
+  }
+  const backup = JSON.parse(readFileSync(REVERT_FILE, 'utf8')) as BackupRow[];
+  console.log(`Revirtiendo ${backup.length} filas desde ${REVERT_FILE}…`);
+  let rok = 0;
+  let rfail = 0;
+  for (const b of backup) {
+    const e1 = await db.from('operations').update(b.operations).eq('id', b.id);
+    const e2 = b.international_transfers
+      ? await db.from('international_transfers').update(b.international_transfers).eq('operation_id', b.id)
+      : { error: null };
+    if (e1.error || e2.error) {
+      rfail++;
+      if (rfail <= 8) console.error(`  ${b.folio}: ${e1.error?.message ?? e2.error?.message}`);
+    } else {
+      rok++;
+    }
+  }
+  console.log(`\nrevertidas: ${rok} | con error: ${rfail}`);
+  process.exit(rfail ? 1 : 0);
+}
+
 // ---------- 1) leer y parsear el estado de cuenta (reglamento nuevo) ----------
 const buf = await getWorkbookBytes();
 console.log(`✓ ${buf.byteLength.toLocaleString('es-MX')} bytes`);
@@ -89,20 +123,32 @@ for (const p of pagos) byKey.set(ecImportKey(p), p);
 console.log(`✓ ${pagos.length} pagos leídos · ${byKey.size} llaves únicas`);
 
 // ---------- 2) traer las transferencias importadas y comparar ----------
+interface ItRow {
+  spread_revenue: number | null;
+  buy_rate: number | null;
+  sell_rate: number | null;
+  exchange_rate_applied: number | null;
+  commission_amount: number | null;
+  commission_fixed: number | null;
+  commission_percent: number | null;
+}
 interface OpRow {
   id: string;
   folio: string;
   import_key: string;
+  gross_revenue: number | null;
   gross_profit: number | null;
   net_profit: number | null;
-  international_transfers: { spread_revenue: number | null; buy_rate: number | null } | null;
+  margin_percent: number | null;
+  international_transfers: ItRow | null;
 }
 
 const { data, error } = await db
   .from('operations')
   .select(
-    'id, folio, import_key, gross_profit, net_profit, ' +
-      'international_transfers(operation_id, spread_revenue, buy_rate)',
+    'id, folio, import_key, gross_revenue, gross_profit, net_profit, margin_percent, ' +
+      'international_transfers(operation_id, spread_revenue, buy_rate, sell_rate, exchange_rate_applied, ' +
+      'commission_amount, commission_fixed, commission_percent)',
   )
   .eq('module', 'transferencia')
   .not('import_source', 'is', null);
@@ -116,6 +162,8 @@ interface Change {
   folio: string;
   oldProfit: number;
   newProfit: number;
+  /** Snapshot de los valores actuales, para el respaldo previo al UPDATE. */
+  old: { operations: Record<string, number | null>; international_transfers: ItRow | null };
   header: ReturnType<typeof ecToTransferPayload>['header'];
   details: ReturnType<typeof ecToTransferPayload>['details'];
 }
@@ -145,6 +193,25 @@ for (const row of rows) {
     folio: row.folio,
     oldProfit: Number(row.net_profit ?? 0),
     newProfit: header.net_profit,
+    old: {
+      operations: {
+        gross_revenue: row.gross_revenue,
+        gross_profit: row.gross_profit,
+        net_profit: row.net_profit,
+        margin_percent: row.margin_percent,
+      },
+      international_transfers: t
+        ? {
+            spread_revenue: t.spread_revenue,
+            buy_rate: t.buy_rate,
+            sell_rate: t.sell_rate,
+            exchange_rate_applied: t.exchange_rate_applied,
+            commission_amount: t.commission_amount,
+            commission_fixed: t.commission_fixed,
+            commission_percent: t.commission_percent,
+          }
+        : null,
+    },
     header,
     details,
   });
@@ -171,7 +238,20 @@ if (!APPLY) {
 }
 
 // ---------- 3) APPLY: UPDATE en sitio ----------
-console.log(`\n--- APPLY: ${changes.length} operaciones ---`);
+// Respaldo de los valores actuales ANTES de escribir, para poder revertir.
+const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+const backupPath = `reprice-backup-${stamp}.json`;
+writeFileSync(
+  backupPath,
+  JSON.stringify(
+    changes.map((c) => ({ id: c.id, folio: c.folio, ...c.old })),
+    null,
+    2,
+  ),
+);
+console.log(`\nRespaldo de ${changes.length} filas → ${backupPath}`);
+
+console.log(`--- APPLY: ${changes.length} operaciones ---`);
 let ok = 0;
 let fail = 0;
 for (const c of changes) {
