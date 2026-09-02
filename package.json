@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "typecheck:server": "tsc -p tsconfig.functions.json --noEmit",
     "functions:deploy": "supabase functions deploy --project-ref cwyrsqhoqieaamfgbuyb",
-    "sync:estado-cuenta": "tsx scripts/sync-estado-cuenta.mts"
+    "sync:estado-cuenta": "tsx scripts/sync-estado-cuenta.mts",
+    "sync:libro-transferencias": "tsx scripts/sync-libro-transferencias.mts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",

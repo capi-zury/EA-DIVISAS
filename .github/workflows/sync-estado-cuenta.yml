@@ -1,15 +1,19 @@
-# Trae el "ESTADO DE CUENTA CLIENTES" de OneDrive/SharePoint todos los días y
-# registra los pagos nuevos (misma lógica y deduplicación que "Importar de
-# Excel" en la app — ver scripts/sync-estado-cuenta.mts).
+# Trae el "ESTADO DE CUENTA CLIENTES" de OneDrive/SharePoint y registra los
+# pagos nuevos (misma lógica y deduplicación que "Importar de Excel" — ver
+# scripts/sync-estado-cuenta.mts).
+#
+# DESACTIVADO EN AUTOMÁTICO (2026-09-02): a partir de septiembre las
+# transferencias entran por "Sincronizar libro de transferencias" (formato
+# nuevo). Este workflow queda solo para disparo manual, por si hace falta
+# reprocesar el estado de cuenta histórico. Si se re-activa el `schedule`,
+# volvería a cargar los pagos viejos.
 #
 # Requiere el secret ESTADO_CUENTA_URL con el link "Cualquiera con el
 # vínculo" del archivo (si es "Personas de la organización", SharePoint pide
 # una sesión de Microsoft 365 que este workflow no puede dar y falla con 403).
-name: Sincronizar estado de cuenta
+name: Sincronizar estado de cuenta (manual)
 
 on:
-  schedule:
-    - cron: '0 18 * * *' # 12:00 (mediodía) hora de Ciudad de México (UTC-6, sin horario de verano)
   workflow_dispatch:
 
 jobs:
