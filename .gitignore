@@ -37,3 +37,6 @@ supabase/.temp
 
 # Respaldos del reprice de transferencias (mantener local, no commitear)
 reprice-backup-*.json
+
+# Respaldo del wipe de transferencias (mantener local, no commitear)
+wipe-transferencias-backup-*.json
