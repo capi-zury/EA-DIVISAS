@@ -46,8 +46,11 @@ export interface TransferResult {
 
 export function calcTransfer(input: TransferInput): TransferResult {
   const amountSent = money(input.amountSent);
-  const buyRate = money(input.buyRate);
   const sellRate = money(input.sellRate);
+  // Sin tipo de cambio de compra (0 o negativo) no hay spread que reconocer:
+  // se iguala al de venta (spread 0), nunca se asume costo real cero.
+  const buyRateInput = money(input.buyRate);
+  const buyRate = buyRateInput.gt(0) ? buyRateInput : sellRate;
   const commissionFixed = money(input.commissionFixed ?? 0);
   const commissionPercent = money(input.commissionPercent ?? 0);
   const providerCost = money(input.providerCost ?? 0);

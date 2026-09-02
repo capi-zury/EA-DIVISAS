@@ -1,8 +1,18 @@
 /**
  * Lectura del "ESTADO DE CUENTA CLIENTES" — una hoja por cliente, formato
- * libro mayor. Extrae las operaciones de PAGO (transferencia) copiando los
- * números que el Excel ya calculó (columnas TOTAL, COM $, DIFERENCIA), sin
- * recalcular, para que la app nunca muestre cifras distintas al Excel.
+ * libro mayor. Extrae las operaciones de PAGO (transferencia).
+ *
+ * Reglamento de utilidad (acordado con el negocio, ver README
+ * §"Importación de transferencias"):
+ *   1. La COMISIÓN (columna COM $, o COM % × TOTAL) es lo que gana EA "de
+ *      entrada". La hoja casi siempre la trae.
+ *   2. El SPREAD cambiario — USD × (TC venta − TC compra) — solo se suma
+ *      cuando la hoja trae TC de compra Y de venta con datos completos.
+ *   3. Cuando NO hay TC de compra, se iguala al de venta (spread 0) y no se
+ *      suma nada por diferencia de tipo de cambio. No se usa la columna
+ *      DIFERENCIA de la hoja como fuente: suele venir sin el TC de compra
+ *      restado y trae el monto completo.
+ * El monto en pesos (USD × TC de venta) sí se copia tal cual del Excel.
  *
  * Compartido frontend (asistente de importación) / servidor (Edge Function).
  */
@@ -13,11 +23,16 @@ export interface EcPago {
   beneficiary: string;
   usd: number;
   tcVenta: number;
-  tcCompra: number;
+  tcCompra: number; // = tcVenta cuando la hoja no trae un TC de compra válido
   comPct: number;
-  comUsd: number; // COM $ del Excel (pesos)
-  totalVenta: number; // USD × TC
-  diferencia: number; // ganancia de EA = columna DIFERENCIA (spread + comisión)
+  comUsd: number; // COM $ del Excel (pesos) — utilidad "de entrada"
+  totalVenta: number; // USD × TC de venta
+  // `spread` / `ratesComplete` los produce siempre parseEstadoCuenta; son
+  // opcionales solo porque un payload de un cliente viejo puede no traerlos
+  // (el servidor deriva `spread` de diferencia − comisión en ese caso).
+  spread?: number; // USD × (TC venta − TC compra); 0 si la hoja no trae ambos TC
+  diferencia: number; // ganancia de EA en la fila = comisión + spread
+  ratesComplete?: boolean; // la hoja traía TC de compra y de venta con datos
   date: string; // yyyy-mm-dd (nunca null: se omiten las filas sin fecha)
 }
 
@@ -90,22 +105,27 @@ export function parseEstadoCuenta(sheets: EcSheet[]): EcPago[] {
       if (seen.has(dedupKey)) continue;
       seen.add(dedupKey);
 
-      let tcCompra = parseAmount(ci('TC COMPRA') >= 0 ? r[ci('TC COMPRA')] : null) ?? 0;
-      if (tcCompra < 5 || tcCompra > 40) tcCompra = tcVenta;
       let comPct = parseAmount(ci('COM %') >= 0 ? r[ci('COM %')] : null) ?? 0;
       if (comPct > 0.06 || comPct < 0) comPct = 0;
 
       const totalVenta = Math.round(usd * tcVenta * 10000) / 10000;
-      const idxDif = [ci('DIFERENCIA'), ci('DIF DE TC VENTA Y TC COMPRA')].find((x) => x >= 0) ?? -1;
+
+      // 1. Comisión: lo que gana EA "de entrada". COM $ tal cual, o COM % × TOTAL.
       const idxCom = ci('COM $');
       let comUsd = idxCom >= 0 ? parseAmount(r[idxCom]) ?? 0 : 0;
       if (!comUsd && comPct) comUsd = Math.round(totalVenta * comPct * 10000) / 10000;
 
-      let diferencia = idxDif >= 0 ? parseAmount(r[idxDif]) ?? NaN : NaN;
-      const fallbackDif = Math.round((usd * (tcVenta - tcCompra) + comUsd) * 10000) / 10000;
-      // si la columna DIFERENCIA viene sin TC COMPRA restado, trae el monto
-      // completo — una ganancia real es < 20% del TOTAL.
-      if (!Number.isFinite(diferencia) || Math.abs(diferencia) > totalVenta * 0.2) diferencia = fallbackDif;
+      // 2. Spread: solo si la hoja trae TC de compra Y de venta con datos.
+      //    Sin TC de compra válido se iguala al de venta (spread 0) y no se
+      //    suma nada por diferencia de tipo de cambio (tampoco la columna
+      //    DIFERENCIA, que a menudo viene sin el TC de compra restado).
+      const rawTcCompra = parseAmount(ci('TC COMPRA') >= 0 ? r[ci('TC COMPRA')] : null);
+      const ratesComplete = rawTcCompra != null && rawTcCompra >= 5 && rawTcCompra <= 40;
+      const tcCompra = ratesComplete ? rawTcCompra : tcVenta;
+      const spread = ratesComplete ? Math.round(usd * (tcVenta - tcCompra) * 10000) / 10000 : 0;
+
+      // 3. Ganancia de EA en la fila = comisión + spread.
+      const diferencia = Math.round((comUsd + spread) * 10000) / 10000;
 
       pagos.push({
         client,
@@ -116,7 +136,9 @@ export function parseEstadoCuenta(sheets: EcSheet[]): EcPago[] {
         comPct,
         comUsd,
         totalVenta,
+        spread,
         diferencia,
+        ratesComplete,
         date,
       });
     }
@@ -131,9 +153,11 @@ export function ecToTransferPayload(
   p: EcPago,
   opts: { createdBy: string; clientId: string | null; importBatchId: string },
 ) {
-  const util = r2(p.diferencia);
   const comision = r2(p.comUsd);
-  const spread = r2(p.diferencia - p.comUsd);
+  // `spread` puede faltar si el payload viene de un cliente viejo: se deriva
+  // de la ganancia total menos la comisión (comportamiento anterior).
+  const spread = r2(p.spread ?? p.diferencia - p.comUsd);
+  const util = r2(comision + spread);
   const margin = p.totalVenta ? r2((util / p.totalVenta) * 100) : 0;
 
   return {

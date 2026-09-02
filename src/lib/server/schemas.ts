@@ -107,6 +107,10 @@ export const importOperationsRequestSchema = z.object({
         comPct: z.number(),
         comUsd: z.number(),
         totalVenta: z.number(),
+        // spread cambiario y "¿la hoja traía ambos TC?" — opcionales para no
+        // romper clientes viejos; el servidor los deriva si faltan.
+        spread: z.number().optional(),
+        ratesComplete: z.boolean().optional(),
         diferencia: z.number(),
         date: z.string(),
       }),

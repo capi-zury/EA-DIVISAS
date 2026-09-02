@@ -5,8 +5,11 @@
  * TC venta, TC compra y COM% por operación. Enriquece con datos bancarios
  * del archivo JEEVES (SWIFT, cuenta, banco, dirección, UETR).
  *
- * Modelo:  ganancia = USD*(TC - TC_COMPRA)  +  USD*TC*COM%
- *          (spread cambiario + comisión al cliente; nada más se resta)
+ * Modelo:  ganancia = comisión (COM $ / COM% × TOTAL)  +  spread
+ *          spread = USD*(TC - TC_COMPRA)  SOLO si la hoja trae TC de compra
+ *          y de venta con datos; si falta el TC de compra, spread = 0 y no se
+ *          suma nada por diferencia de tipo de cambio (la columna DIFERENCIA
+ *          de la hoja no se usa como fuente).
  *
  * Uso:
  *   npx tsx scripts/reimport-transferencias.mts <estado.xlsx> <jeeves.xlsx>                 (prueba)
@@ -84,9 +87,11 @@ const jeevesBank = new Map<string, Bank>(); // benefKey|usd -> banco
 interface Pago {
   client: string; sheet: string; row: number;
   beneficiary: string; usd: number; tcVenta: number; tcCompra: number; comPct: number;
-  comUsd: number;      // COM $ del Excel (comisión en pesos)
-  totalVenta: number;  // USD × TC  (columna TOTAL del Excel)
-  diferencia: number;  // ganancia de EA = columna DIFERENCIA del Excel (spread + comisión)
+  comUsd: number;      // COM $ del Excel (comisión en pesos) — utilidad "de entrada"
+  totalVenta: number;  // USD × TC de venta  (columna TOTAL del Excel)
+  spread: number;      // USD × (TC venta − TC compra); 0 si la hoja no trae ambos TC
+  ratesComplete: boolean; // la hoja traía TC de compra y de venta con datos
+  diferencia: number;  // ganancia de EA en la fila = comisión + spread
   date: string | null; factura: string | null; obs: string | null; issues: string[];
 }
 const pagos: Pago[] = [];
@@ -128,33 +133,33 @@ const seen = new Set<string>();
       if (seen.has(dedupKey)) continue;
       seen.add(dedupKey);
 
-      let tcCompra = parseAmount(ci('TC COMPRA') >= 0 ? r[ci('TC COMPRA')] : null) ?? 0;
-      if (tcCompra < 5 || tcCompra > 40) tcCompra = tcVenta; // sin dato válido => sin spread
       let comPct = parseAmount(ci('COM %') >= 0 ? r[ci('COM %')] : null) ?? 0;
       const issues: string[] = [];
       if (comPct > 0.06 || comPct < 0) { issues.push(`COM% raro (${comPct}) → 0`); comPct = 0; }
 
-      // Números que el Excel YA calculó — se copian tal cual (no se recalcula
-      // nada aquí, para que la app no arroje cifras distintas al Excel).
       const totalVenta = Math.round(usd * tcVenta * 10000) / 10000; // = columna TOTAL
-      const idxDif = [ci('DIFERENCIA'), ci('DIF DE TC VENTA Y TC COMPRA')].find((x) => x >= 0) ?? -1;
+
+      // 1. Comisión: lo que gana EA "de entrada" (COM $ tal cual, o COM % × TOTAL).
       const idxCom = ci('COM $');
       let comUsd = idxCom >= 0 ? (parseAmount(r[idxCom]) ?? 0) : 0;
       if (!comUsd && comPct) comUsd = Math.round(totalVenta * comPct * 10000) / 10000;
-      let diferencia = idxDif >= 0 ? (parseAmount(r[idxDif]) ?? NaN) : NaN;
-      const fallbackDif = Math.round((usd * (tcVenta - tcCompra) + comUsd) * 10000) / 10000;
-      // si la columna DIFERENCIA viene sin TC COMPRA restado, trae el monto
-      // completo (no la ganancia). Una ganancia real es < 20% del TOTAL.
-      if (!Number.isFinite(diferencia) || Math.abs(diferencia) > totalVenta * 0.2) {
-        if (Number.isFinite(diferencia) && Math.abs(diferencia) > totalVenta * 0.2) {
-          issues.push(`DIFERENCIA del Excel fuera de rango (${Math.round(diferencia)}) → recalculada`);
-        }
-        diferencia = fallbackDif;
-      }
+
+      // 2. Spread: solo si la hoja trae TC de compra Y de venta con datos.
+      //    Sin TC de compra válido se iguala al de venta (spread 0) y no se
+      //    suma nada por diferencia de tipo de cambio; la columna DIFERENCIA
+      //    de la hoja no se usa (suele venir sin el TC de compra restado).
+      const rawTcCompra = parseAmount(ci('TC COMPRA') >= 0 ? r[ci('TC COMPRA')] : null);
+      const ratesComplete = rawTcCompra != null && rawTcCompra >= 5 && rawTcCompra <= 40;
+      const tcCompra = ratesComplete ? rawTcCompra : tcVenta;
+      if (!ratesComplete && rawTcCompra != null) issues.push(`TC compra raro (${rawTcCompra}) → sin spread`);
+      const spread = ratesComplete ? Math.round(usd * (tcVenta - tcCompra) * 10000) / 10000 : 0;
+
+      // 3. Ganancia de EA en la fila = comisión + spread.
+      const diferencia = Math.round((comUsd + spread) * 10000) / 10000;
 
       pagos.push({
         client, sheet: sheetName, row: i + 1,
-        beneficiary: nombre, usd, tcVenta, tcCompra, comPct, comUsd, totalVenta, diferencia, date,
+        beneficiary: nombre, usd, tcVenta, tcCompra, comPct, comUsd, totalVenta, spread, ratesComplete, diferencia, date,
         factura: String(r[ci('FACTURA')] ?? '').trim() || null,
         obs: String(r[ci('OBSERVACIONES')] ?? '').trim() || null,
         issues,
@@ -196,7 +201,7 @@ let conBanco = 0;
 const clientesNuevosSet = new Set<string>();
 for (const p of pagos) {
   if (!clientId.has(normalizeKey(p.client))) clientesNuevosSet.add(p.client);
-  utilTotal += p.diferencia; // ganancia = columna DIFERENCIA del Excel, tal cual
+  utilTotal += p.diferencia; // ganancia = comisión + spread (spread solo con TC completos)
   if (jeevesBank.has(`${benefKey(p.beneficiary)}|${Math.round(p.usd * 100)}`)) conBanco++;
 }
 
@@ -207,10 +212,10 @@ if (INCREMENTAL) {
 }
 console.log(`  clientes nuevos a crear:                ${clientesNuevosSet.size}`);
 console.log(`  con datos bancarios de JEEVES:          ${conBanco}`);
-console.log(`  con COM% inválido (se deja en 0):       ${pagos.filter((p) => p.issues.length).length}`);
+console.log(`  con algún dato raro (COM% / TC compra):  ${pagos.filter((p) => p.issues.length).length}`);
 console.log(`  utilidad total estimada (MXN):          ${utilTotal.toLocaleString('es-MX', { maximumFractionDigits: 2 })}`);
-console.log(`  filas con DIFERENCIA recalculada:       ${pagos.filter((p) => p.issues.some((x) => x.includes('DIFERENCIA'))).length}`);
-console.log('\nmuestra (util = columna DIFERENCIA del Excel):');
+console.log(`  filas sin spread (TC compra ausente):    ${pagos.filter((p) => !p.ratesComplete).length}`);
+console.log('\nmuestra (util = comisión + spread):');
 for (const p of pagos.slice(0, 6)) {
   console.log(`  ${p.client} → ${p.beneficiary.slice(0, 26)} | ${p.usd} USD | TCv ${p.tcVenta} TCc ${p.tcCompra} | COM$ ${p.comUsd.toFixed(2)} | util ${p.diferencia.toLocaleString('es-MX')}`);
 }
@@ -262,11 +267,10 @@ for (const p of pagos) {
   const bank = jeevesBank.get(`${benefKey(p.beneficiary)}|${Math.round(p.usd * 100)}`) ?? {};
   const dest = detectCountry(bank.dirBenef, bank.dirBanco, p.beneficiary) ?? 'Estados Unidos';
 
-  // Todo copiado del Excel — sin recalcular. spread = DIFERENCIA − COM$ para
-  // que spread + comisión = utilidad siempre cuadre.
-  const util = r2(p.diferencia);
+  // utilidad = comisión + spread (spread ya es 0 si la hoja no traía ambos TC).
   const comision = r2(p.comUsd);
-  const spread = r2(p.diferencia - p.comUsd);
+  const spread = r2(p.spread);
+  const util = r2(comision + spread);
   const margin = p.totalVenta ? r2((util / p.totalVenta) * 100) : 0;
 
   const header = {

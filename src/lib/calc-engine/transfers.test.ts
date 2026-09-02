@@ -43,6 +43,13 @@ describe('calcTransfer', () => {
     expect(toDisplayNumber(r.netProfit)).toBe(365);
   });
 
+  it('4. sin tipo de cambio de compra (0) se iguala al de venta → spread 0, solo cuenta la comisión', () => {
+    const r = calcTransfer({ amountSent: 1000, buyRate: 0, sellRate: 17.5, commissionFixed: 100 });
+    expect(toDisplayNumber(r.spreadRevenue)).toBe(0);
+    expect(toDisplayNumber(r.commissionAmount)).toBe(100);
+    expect(toDisplayNumber(r.netProfit)).toBe(100);
+  });
+
   it('el ingreso bruto menos los costos siempre es igual a la utilidad neta (sin errores de redondeo)', () => {
     const r = calcTransfer({
       amountSent: 333.33,
