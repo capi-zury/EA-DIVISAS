@@ -34,3 +34,6 @@ supabase/.temp
 *.njsproj
 *.sln
 *.sw?
+
+# Respaldos del reprice de transferencias (mantener local, no commitear)
+reprice-backup-*.json
