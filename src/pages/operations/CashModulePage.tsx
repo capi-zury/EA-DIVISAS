@@ -169,19 +169,24 @@ function CashForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
   const quickPct = quick.pct === '' ? 0 : Number(quick.pct);
   const quickCost = quickHasCost && quick.costo !== '' ? Number(quick.costo) : 0;
   const quickReady = quickMonto > 0 && (quickPct > 0 || quickCost > 0);
+  // Mapeo al modelo de calcCash. Sin costo declarado se guarda como el modo
+  // detallado "simple" (cantidad = monto, precio compra = venta = 1), para que
+  // la lista y el "Detalle" muestren lo mismo. Con costo es un spread real
+  // (cantidad 1, compra = costo, venta = monto → abre en modo detallado "spread").
+  const quickCalcInput =
+    quickCost > 0
+      ? { quantity: 1, buyPrice: quickCost, sellPrice: quickMonto }
+      : { quantity: quickMonto, buyPrice: 1, sellPrice: 1 };
   const quickPreview = useMemo(
     () =>
       calcCash({
-        quantity: 1,
-        // sin costo de compra declarado: buyPrice = sellPrice → spread 0, la
-        // ganancia es solo la comisión. Con costo: la diferencia también cuenta.
-        buyPrice: quickCost > 0 ? quickCost : quickMonto,
-        sellPrice: quickMonto,
+        ...quickCalcInput,
         commissionFixed: 0,
         commissionPercent: quickPct,
         additionalCosts: 0,
         providerCommissionPercent: 0,
       }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [quickMonto, quickPct, quickCost],
   );
 
@@ -233,9 +238,7 @@ function CashForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
           details: {
             currencyCode: quick.currencyCode,
             denomination: null,
-            quantity: 1,
-            buyPrice: quickCost > 0 ? quickCost : quickMonto,
-            sellPrice: quickMonto,
+            ...quickCalcInput,
             commissionFixed: 0,
             commissionPercent: quickPct,
             additionalCosts: 0,
