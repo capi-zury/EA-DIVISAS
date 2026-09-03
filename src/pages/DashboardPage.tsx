@@ -99,7 +99,11 @@ export function DashboardPage() {
       : ((totals.month.profit - totals.prevMonth.profit) / Math.abs(totals.prevMonth.profit)) * 100;
 
   const moduleCards = useMemo(() => {
-    const rows = moduleTotals ?? [];
+    // Solo el mes en curso — igual ventana que la tarjeta "Utilidad del mes"
+    // (la sección se titula "Por módulo · este mes").
+    const rows = (moduleTotals ?? []).filter(
+      (r) => r.operation_date >= ranges.monthStart && r.operation_date < ranges.tomorrow,
+    );
     const byModule = (m: string) =>
       rows
         .filter((r) => r.module === m)
@@ -117,7 +121,7 @@ export function DashboardPage() {
       return { ...t, avgMargin: t.operations ? t.marginSum / t.operations : 0 };
     };
     return { transferencia: build('transferencia'), cripto: build('cripto'), efectivo: build('efectivo') };
-  }, [moduleTotals]);
+  }, [moduleTotals, ranges]);
 
   const maxModuleProfit = Math.max(
     1,
