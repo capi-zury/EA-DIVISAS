@@ -312,7 +312,7 @@ function CashForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} noValidate>
       <fieldset disabled={readOnly} style={{ border: 'none', padding: 0, margin: 0 }}>
 
       {!detailed && (
