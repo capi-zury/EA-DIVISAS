@@ -151,6 +151,39 @@ function CryptoForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
   const [assetCode, setAssetCode] = useState(detail?.crypto_asset_code ?? '');
   const { data: networks } = useCryptoNetworks(assetCode || null);
 
+  // Modo RÁPIDO (por defecto en operaciones nuevas): elige la cripto y anota
+  // "cuánto te pagó el cliente" y "cuánto te costó" → la ganancia sale sola.
+  // El modo detallado (cantidad, precio por moneda, red, comisiones, wallets)
+  // queda detrás de un botón. Al editar se abre directo en detallado.
+  const [detailed, setDetailed] = useState(isEdit);
+  const [quick, setQuick] = useState({
+    clientId: editOp?.client_id ?? '',
+    recibido: '',
+    costo: '',
+  });
+  const setQ =
+    (k: keyof typeof quick) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      setQuick((q) => ({ ...q, [k]: e.target.value }));
+  const quickNetworkId = networks?.[0]?.id ?? '';
+  const quickIn = quick.recibido === '' ? 0 : Number(quick.recibido);
+  const quickCost = quick.costo === '' ? 0 : Number(quick.costo);
+  const quickReady = !!(assetCode && quickNetworkId && quickIn > 0 && quickCost > 0);
+  const quickPreview = useMemo(
+    () =>
+      calcCrypto({
+        quantity: 1,
+        marketPrice: quickCost,
+        buyPrice: quickCost,
+        sellPrice: quickIn,
+        providerFeeBuy: 0,
+        providerFeeSell: 0,
+        networkFee: 0,
+        customerFeeFixed: 0,
+        customerFeePercent: 0,
+      }),
+    [quickIn, quickCost],
+  );
+
   const [form, setForm] = useState({
     clientId: editOp?.client_id ?? '',
     providerId: editOp?.provider_id ?? '',
@@ -201,6 +234,35 @@ function CryptoForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
+
+    if (!detailed) {
+      if (!quickReady) return;
+      createOperation(
+        {
+          module: 'cripto',
+          header: { client_id: quick.clientId || null, provider_id: null, reference: null, observations: null, status: 'completada' },
+          details: {
+            cryptoAssetCode: assetCode,
+            cryptoNetworkId: quickNetworkId,
+            txHash: null,
+            walletOriginAddress: null,
+            walletDestinationAddress: null,
+            quantity: 1,
+            marketPrice: quickCost,
+            buyPrice: quickCost,
+            sellPrice: quickIn,
+            providerFeeBuy: 0,
+            providerFeeSell: 0,
+            networkFee: 0,
+            customerFeeFixed: 0,
+            customerFeePercent: 0,
+          },
+        },
+        { onSuccess: onDone },
+      );
+      return;
+    }
+
     if (!previewReady) return;
 
     const details = {
@@ -280,6 +342,108 @@ function CryptoForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
   return (
     <form onSubmit={handleSubmit}>
       <fieldset disabled={readOnly} style={{ border: 'none', padding: 0, margin: 0 }}>
+
+      {!detailed && (
+        <>
+          <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: '0 0 16px', lineHeight: 1.55 }}>
+            En 10 segundos: qué cripto, <b>cuánto te pagó el cliente</b> y <b>cuánto te costó</b>. La ganancia sale sola.
+          </p>
+          <div className="grid-2">
+            <div className="field">
+              <label>¿Qué cripto?</label>
+              <select
+                value={assetCode}
+                onChange={(e) => {
+                  setAssetCode(e.target.value);
+                  setForm((f) => ({ ...f, networkId: '' }));
+                }}
+              >
+                <option value="">Selecciona…</option>
+                {assets?.map((a: any) => (
+                  <option key={a.code} value={a.code}>{a.code} — {a.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>Cliente (opcional)</label>
+              <select value={quick.clientId} onChange={setQ('clientId')}>
+                <option value="">— sin asignar —</option>
+                {clients?.map((c: any) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="field">
+            <label>¿Cuánto te pagó el cliente? (total en pesos)</label>
+            <input type="number" step="any" inputMode="decimal" placeholder="ej. 100000" value={quick.recibido} onChange={setQ('recibido')} style={{ maxWidth: 280 }} />
+          </div>
+          <div className="field">
+            <label>¿Cuánto te costó a ti? (total en pesos)</label>
+            <input type="number" step="any" inputMode="decimal" placeholder="ej. 95000" value={quick.costo} onChange={setQ('costo')} style={{ maxWidth: 280 }} />
+          </div>
+
+          <div
+            className="card card-tight"
+            style={{
+              background: 'var(--navy-850)',
+              border: `1px solid ${quickReady ? (toDisplayNumber(quickPreview.netProfit) >= 0 ? 'var(--green-dim)' : 'var(--red-dim)') : 'var(--border)'}`,
+              margin: '4px 0 16px',
+            }}
+          >
+            <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Ganancia de esta operación (se calcula solo)
+            </div>
+            {quickReady ? (
+              <>
+                <PreviewRow label="Te pagó el cliente" value={fmtMoney(quickIn)} />
+                <PreviewRow label="Te costó" value={fmtMoney(quickCost)} />
+                <PreviewRow
+                  label="Ganancia"
+                  value={fmtMoney(toDisplayNumber(quickPreview.netProfit))}
+                  tone={toDisplayNumber(quickPreview.netProfit) >= 0 ? 'pos' : 'neg'}
+                  bold
+                />
+                <div style={{ fontSize: 12, fontWeight: 600, marginTop: 6, color: toDisplayNumber(quickPreview.netProfit) >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                  {toDisplayNumber(quickPreview.netProfit) > 0
+                    ? '✓ Ganas dinero'
+                    : toDisplayNumber(quickPreview.netProfit) < 0
+                      ? '✕ Pierdes dinero'
+                      : 'Ni ganas ni pierdes'}
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 12.5, color: 'var(--text-mute)' }}>
+                Elige la cripto y escribe los dos montos — aquí verás la ganancia al instante.
+              </div>
+            )}
+          </div>
+
+          {error && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>{(error as Error).message}</div>}
+
+          <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} disabled={isPending || !quickReady}>
+            {isPending ? 'Guardando…' : 'Registrar operación'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setDetailed(true)}
+            style={{ background: 'none', border: 'none', color: 'var(--electric-bright)', cursor: 'pointer', fontSize: 13, padding: '10px 0 0' }}
+          >
+            + Modo detallado (cantidad, precio por moneda, red, comisiones, wallets…)
+          </button>
+        </>
+      )}
+
+      <div hidden={!detailed}>
+      {!isEdit && (
+        <button
+          type="button"
+          onClick={() => setDetailed(false)}
+          style={{ background: 'none', border: 'none', color: 'var(--electric-bright)', cursor: 'pointer', fontSize: 13, padding: '0 0 12px' }}
+        >
+          ← Volver al modo rápido
+        </button>
+      )}
       <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: '0 0 18px', lineHeight: 1.55 }}>
         Anota una compra/venta de cripto en 2 pasos. Llena lo de abajo y el sistema te dice solo
         cuánto ganaste. Comisiones, wallets y notas son opcionales — están escondidas para no estorbar.
@@ -489,6 +653,7 @@ function CryptoForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
           {isPending ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Registrar operación'}
         </button>
       )}
+      </div>
       </fieldset>
 
       {isEdit && (

@@ -147,6 +147,37 @@ function CashForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
     isEdit && detail && Number(detail.buy_price) !== Number(detail.sell_price) ? 'spread' : 'simple';
   const [mode, setMode] = useState<'simple' | 'spread'>(initialMode);
 
+  // Modo RÁPIDO (por defecto en operaciones nuevas): solo "cuánto te dieron" y
+  // "cuánto te costó" → la ganancia sale sola. El modo detallado (precios de
+  // compra/venta por unidad, comisiones, proveedor) queda detrás de un botón.
+  // Al editar una operación existente se abre directo en detallado.
+  const [detailed, setDetailed] = useState(isEdit);
+  const [quick, setQuick] = useState({
+    clientId: editOp?.client_id ?? '',
+    currencyCode: detail?.currency_code ?? 'MXN',
+    recibido: '',
+    costo: '',
+  });
+  const setQ =
+    (k: keyof typeof quick) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      setQuick((q) => ({ ...q, [k]: e.target.value }));
+  const quickIn = quick.recibido === '' ? 0 : Number(quick.recibido);
+  const quickCost = quick.costo === '' ? 0 : Number(quick.costo);
+  const quickReady = quickIn > 0 && quickCost > 0;
+  const quickPreview = useMemo(
+    () =>
+      calcCash({
+        quantity: 1,
+        buyPrice: quickCost,
+        sellPrice: quickIn,
+        commissionFixed: 0,
+        commissionPercent: 0,
+        additionalCosts: 0,
+        providerCommissionPercent: 0,
+      }),
+    [quickIn, quickCost],
+  );
+
   const [form, setForm] = useState({
     clientId: editOp?.client_id ?? '',
     currencyCode: detail?.currency_code ?? (initialMode === 'simple' ? 'MXN' : 'USD'),
@@ -185,6 +216,31 @@ function CashForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
+
+    if (!detailed) {
+      if (!quickReady) return;
+      createOperation(
+        {
+          module: 'efectivo',
+          header: { client_id: quick.clientId || null, reference: null, observations: null, status: 'completada' },
+          details: {
+            currencyCode: quick.currencyCode,
+            denomination: null,
+            quantity: 1,
+            buyPrice: quickCost,
+            sellPrice: quickIn,
+            commissionFixed: 0,
+            commissionPercent: 0,
+            additionalCosts: 0,
+            providerId: null,
+            providerCommissionPercent: 0,
+          },
+        },
+        { onSuccess: onDone },
+      );
+      return;
+    }
+
     if (!preview) return;
 
     if (isEdit) {
@@ -251,6 +307,99 @@ function CashForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
   return (
     <form onSubmit={handleSubmit}>
       <fieldset disabled={readOnly} style={{ border: 'none', padding: 0, margin: 0 }}>
+
+      {!detailed && (
+        <>
+          <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: '0 0 16px', lineHeight: 1.55 }}>
+            En 10 segundos: <b>cuánto te dieron</b> y <b>cuánto te costó</b>. La ganancia sale sola.
+          </p>
+          <div className="grid-2">
+            <div className="field">
+              <label>Cliente (opcional)</label>
+              <select value={quick.clientId} onChange={setQ('clientId')}>
+                <option value="">— sin asignar —</option>
+                {clients?.map((c: any) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>Moneda</label>
+              <select value={quick.currencyCode} onChange={setQ('currencyCode')}>
+                {currencies?.map((c: any) => (
+                  <option key={c.code} value={c.code}>{c.code}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="field">
+            <label>¿Cuánto te dieron? (total en pesos)</label>
+            <input autoFocus type="number" step="any" inputMode="decimal" placeholder="ej. 100000" value={quick.recibido} onChange={setQ('recibido')} style={{ maxWidth: 280 }} />
+          </div>
+          <div className="field">
+            <label>¿Cuánto te costó a ti? (total en pesos)</label>
+            <input type="number" step="any" inputMode="decimal" placeholder="ej. 95000" value={quick.costo} onChange={setQ('costo')} style={{ maxWidth: 280 }} />
+          </div>
+
+          <div
+            className="card card-tight"
+            style={{
+              background: 'var(--navy-850)',
+              border: `1px solid ${quickReady ? (toDisplayNumber(quickPreview.netProfit) >= 0 ? 'var(--green-dim)' : 'var(--red-dim)') : 'var(--border)'}`,
+              margin: '4px 0 16px',
+            }}
+          >
+            <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Ganancia de esta operación (se calcula solo)
+            </div>
+            {quickReady ? (
+              <>
+                <PreviewRow label="Te dieron" value={fmtMoney(quickIn)} />
+                <PreviewRow label="Te costó" value={fmtMoney(quickCost)} />
+                <PreviewRow
+                  label="Ganancia"
+                  value={fmtMoney(toDisplayNumber(quickPreview.netProfit))}
+                  tone={toDisplayNumber(quickPreview.netProfit) >= 0 ? 'pos' : 'neg'}
+                  bold
+                />
+                <div style={{ fontSize: 12, fontWeight: 600, marginTop: 6, color: toDisplayNumber(quickPreview.netProfit) >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                  {toDisplayNumber(quickPreview.netProfit) > 0
+                    ? '✓ Ganas dinero'
+                    : toDisplayNumber(quickPreview.netProfit) < 0
+                      ? '✕ Pierdes dinero'
+                      : 'Ni ganas ni pierdes'}
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 12.5, color: 'var(--text-mute)' }}>Escribe los dos montos y aquí verás la ganancia al instante.</div>
+            )}
+          </div>
+
+          {error && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>{(error as Error).message}</div>}
+
+          <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} disabled={isPending || !quickReady}>
+            {isPending ? 'Guardando…' : 'Registrar operación'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setDetailed(true)}
+            style={{ background: 'none', border: 'none', color: 'var(--electric-bright)', cursor: 'pointer', fontSize: 13, padding: '10px 0 0' }}
+          >
+            + Modo detallado (precio de compra/venta, comisiones, proveedor…)
+          </button>
+        </>
+      )}
+
+      <div hidden={!detailed}>
+      {!isEdit && (
+        <button
+          type="button"
+          onClick={() => setDetailed(false)}
+          style={{ background: 'none', border: 'none', color: 'var(--electric-bright)', cursor: 'pointer', fontSize: 13, padding: '0 0 12px' }}
+        >
+          ← Volver al modo rápido
+        </button>
+      )}
       <div style={{ display: 'flex', gap: 4, background: 'var(--navy-850)', border: '1px solid var(--border)', borderRadius: 8, padding: 3, marginBottom: 16 }}>
         <ModeButton active={mode === 'simple'} onClick={() => setMode('simple')}>
           Comisión simple (monto + %)
@@ -388,6 +537,7 @@ function CashForm({ onDone, editOp }: { onDone: () => void; editOp?: any }) {
           {isPending ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Registrar operación'}
         </button>
       )}
+      </div>
       </fieldset>
 
       {isEdit && (
